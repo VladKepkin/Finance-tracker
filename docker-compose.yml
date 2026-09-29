@@ -1,0 +1,13 @@
+services:
+  web:
+    build: .
+    container_name: money-web
+    restart: unless-stopped
+    env_file: .env
+    environment:
+      DATABASE_PATH: /app/data/money.db
+      NODE_ENV: production
+    volumes:
+      - ./data:/app/data
+    ports:
+      - "3000:3000"
