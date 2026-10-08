@@ -1,4 +1,15 @@
-import { monitorEventLoopDelay, type IntervalHistogram } from "perf_hooks";
+declare const __non_webpack_require__: typeof require | undefined;
+
+export interface EventLoopHistogram {
+  enable(): void;
+  disable(): void;
+  reset(): void;
+  percentile(percentile: number): number;
+  min?: number;
+  max: number;
+  mean: number;
+  stddev?: number;
+}
 
 /**
  * RingBuffer maintains a fixed-capacity circular buffer of numbers (e.g. durations in ms)
@@ -84,7 +95,7 @@ export interface TelemetryState {
   routes: Map<string, RouteMetrics>;
   db: DbMetrics;
   monobank: MonobankMetrics;
-  eldHistogram: IntervalHistogram | null;
+  eldHistogram: EventLoopHistogram | null;
   totalInFlight: number;
   startTime: number;
 }
@@ -125,10 +136,17 @@ function getState(): TelemetryState {
  */
 export function initTelemetry(): void {
   const state = getState();
-  if (!state.eldHistogram && typeof monitorEventLoopDelay === "function") {
+  if (!state.eldHistogram && typeof window === "undefined") {
     try {
-      state.eldHistogram = monitorEventLoopDelay({ resolution: 20 });
-      state.eldHistogram.enable();
+      const proc = (globalThis as unknown as { process?: { getBuiltinModule?: (mod: string) => any } }).process;
+      const perfHooks =
+        typeof proc?.getBuiltinModule === "function"
+          ? proc.getBuiltinModule("node:perf_hooks")
+          : (0, eval)('require')("perf_hooks");
+      if (typeof perfHooks?.monitorEventLoopDelay === "function") {
+        state.eldHistogram = perfHooks.monitorEventLoopDelay({ resolution: 20 });
+        state.eldHistogram?.enable();
+      }
     } catch {
       // Event loop delay not supported in current environment
     }

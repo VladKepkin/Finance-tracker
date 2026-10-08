@@ -1,6 +1,5 @@
-import { recordMonobankCall } from "./telemetry";
-
 export const MONOBANK_BASE = "https://api.monobank.ua";
+
 
 export interface MonoAccount {
   id: string;
@@ -109,7 +108,13 @@ export async function monoFetch<T>(token: string, path: string): Promise<T> {
     throw err;
   } finally {
     const durationMs = performance.now() - start;
-    recordMonobankCall(status, durationMs, isError);
+    if (typeof window === "undefined") {
+      try {
+        const { recordMonobankCall } = await import("./telemetry");
+        recordMonobankCall(status, durationMs, isError);
+      } catch {
+      }
+    }
   }
 }
 

@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { House, ReceiptText, Target, ChartPie, Menu, RefreshCw } from "lucide-react";
+import { House, ReceiptText, Target, ChartPie, Menu, RefreshCw, KeyRound, ExternalLink, Loader2 } from "lucide-react";
 import { useMono, fetchTransactionsRange, type Period } from "@/lib/useMono";
 import { analyze, cashBalances } from "@/lib/analytics";
 import { mccToCategory } from "@/lib/mcc";
@@ -55,7 +55,9 @@ import { RefreshButton } from "@/components/RefreshButton";
 import { Dashboard } from "@/components/Dashboard";
 import { HomeSkeleton } from "@/components/HomeSkeleton";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
 import { Sheet } from "@/components/ui/sheet";
+
 import { Evaluator } from "@/components/Evaluator";
 import dynamic from "next/dynamic";
 import { greeting, todayLongUk } from "@/lib/home/greeting";
@@ -122,6 +124,8 @@ export default function Home() {
   const [tab, setTab] = useState<Tab>("dashboard");
   const [masked, setMasked] = useState(false);
   const [evaluatorOpen, setEvaluatorOpen] = useState(false);
+  const [newTokenInput, setNewTokenInput] = useState("");
+  const [isEditingToken, setIsEditingToken] = useState(false);
   useEffect(() => setMasked(readMasked()), []);
   const clientReady = state.client !== null;
   useEffect(() => {
@@ -919,14 +923,119 @@ export default function Home() {
   }
 
   if (!state.client) {
+    const isTokenError = Boolean(
+      state.error && (/токен|token|403|недійсн|невірн|авториз/i.test(state.error))
+    );
+    const showTokenForm = isTokenError || isEditingToken;
+
     return (
-      <div className="mx-auto flex min-h-dvh max-w-lg flex-col justify-center gap-4 px-5">
-        <div className="soft-shadow space-y-4 rounded-[28px] bg-card p-6">
-          <h1 className="font-display text-xl font-semibold">Monobank зараз не відповів</h1>
-          <p className="text-sm text-muted-foreground">{state.error ?? "Дані рахунків не завантажились."}</p>
-          <Button className="h-11 w-full rounded-full" onClick={() => window.location.reload()}>
-            <RefreshCw className="size-4" /> Спробувати ще
-          </Button>
+      <div className="mx-auto flex min-h-dvh max-w-lg flex-col justify-center gap-4 px-5 py-8">
+        <div className="soft-shadow space-y-5 rounded-[28px] bg-card p-6 sm:p-7 border border-border/50">
+          <div className="flex items-center gap-3">
+            <div
+              className={cn(
+                "flex size-11 items-center justify-center rounded-2xl shrink-0",
+                isTokenError ? "bg-destructive/10 text-destructive" : "bg-primary/10 text-primary"
+              )}
+            >
+              {isTokenError ? <KeyRound className="size-5" /> : <RefreshCw className="size-5" />}
+            </div>
+            <div className="min-w-0">
+              <h1 className="font-display text-xl font-semibold leading-tight">
+                {isTokenError ? "Токен Monobank недійсний" : "Monobank зараз не відповів"}
+              </h1>
+              <p className="text-xs text-muted-foreground mt-0.5">
+                {isTokenError
+                  ? "Потрібно оновити персональний токен"
+                  : "Сервер або банк тимчасово недоступний"}
+              </p>
+            </div>
+          </div>
+
+          <div className="rounded-2xl bg-secondary/60 p-3.5 text-xs text-muted-foreground border border-border/40">
+            {state.error ?? "Не вдалося завантажити дані рахунків з Monobank."}
+          </div>
+
+          {showTokenForm ? (
+            <div className="space-y-3.5 pt-1">
+              <div className="flex items-center justify-between text-xs">
+                <span className="font-medium text-foreground">Введіть новий токен</span>
+                <a
+                  href="https://api.monobank.ua/"
+                  target="_blank"
+                  rel="noreferrer"
+                  className="inline-flex items-center gap-1 text-primary hover:underline"
+                >
+                  Отримати на api.monobank.ua <ExternalLink className="size-3" />
+                </a>
+              </div>
+              <Input
+                type="password"
+                value={newTokenInput}
+                onChange={(e) => setNewTokenInput(e.target.value)}
+                placeholder="Вставте новий токен (u...)"
+                className="h-11 rounded-xl"
+                onKeyDown={(e) => e.key === "Enter" && newTokenInput.trim() && connect(newTokenInput.trim())}
+              />
+              <div className="flex flex-col sm:flex-row gap-2">
+                <Button
+                  className="h-11 flex-1 rounded-2xl font-medium"
+                  disabled={state.loading || !newTokenInput.trim()}
+                  onClick={() => connect(newTokenInput.trim())}
+                >
+                  {state.loading ? (
+                    <Loader2 className="size-4 animate-spin mr-2" />
+                  ) : (
+                    <KeyRound className="size-4 mr-2" />
+                  )}
+                  {state.loading ? "Збереження…" : "Зберегти новий токен"}
+                </Button>
+                {isEditingToken && !isTokenError && (
+                  <Button
+                    variant="outline"
+                    className="h-11 rounded-2xl"
+                    onClick={() => setIsEditingToken(false)}
+                  >
+                    Скасувати
+                  </Button>
+                )}
+              </div>
+            </div>
+          ) : (
+            <div className="space-y-2">
+              <Button className="h-11 w-full rounded-2xl" onClick={() => window.location.reload()}>
+                <RefreshCw className="size-4 mr-2" /> Спробувати ще
+              </Button>
+              <Button
+                variant="outline"
+                className="h-11 w-full rounded-2xl"
+                onClick={() => setIsEditingToken(true)}
+              >
+                <KeyRound className="size-4 mr-2" /> Змінити токен Monobank
+              </Button>
+            </div>
+          )}
+
+          <div className="flex items-center justify-between pt-3 border-t border-border/50 text-xs">
+            <button
+              type="button"
+              onClick={disconnect}
+              className="text-muted-foreground hover:text-destructive transition-colors font-medium"
+            >
+              Скинути збережений токен
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                void fetch("/api/auth/logout", { method: "POST" }).then(() => {
+                  window.location.href = "/login";
+                });
+              }}
+              className="text-muted-foreground hover:text-foreground transition-colors"
+            >
+              Вийти з акаунта
+            </button>
+          </div>
         </div>
       </div>
     );
