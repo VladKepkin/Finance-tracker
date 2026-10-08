@@ -26,6 +26,9 @@ export function createClientInfoCache<T>(freshMs = CLIENT_INFO_FRESH_MS) {
     forget(userId: number) {
       byUser.delete(userId);
     },
+    peek(userId: number): CachedClientInfo<T> | undefined {
+      return byUser.get(userId);
+    },
   };
 }
 

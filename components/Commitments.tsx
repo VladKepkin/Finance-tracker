@@ -1,11 +1,21 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import { Repeat, Check, X, Trash2 } from "lucide-react";
+import { Repeat, Check, X, Trash2, Plus, CreditCard, Banknote } from "lucide-react";
 import { formatMoney } from "@/lib/format";
 import type { Cadence } from "@/lib/metrics/cadence";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import { currencyMeta } from "@/lib/monobank";
+import { cn } from "@/lib/utils";
 
 interface CommitmentRow {
   id: number;
@@ -14,6 +24,7 @@ interface CommitmentRow {
   currency: number;
   cadence: Cadence;
   anchor_day: number;
+  source?: "card" | "cash";
 }
 
 interface Suggestion {
@@ -37,6 +48,13 @@ export function CommitmentsCard({ base, onChanged }: { base: number; onChanged: 
   const [suggestions, setSuggestions] = useState<Suggestion[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  const [adding, setAdding] = useState(false);
+  const [manualName, setManualName] = useState("");
+  const [manualAmount, setManualAmount] = useState("");
+  const [manualCurrency, setManualCurrency] = useState(base);
+  const [manualCadence, setManualCadence] = useState<Cadence>("monthly");
+  const [manualAnchorDay, setManualAnchorDay] = useState(1);
+  const [manualSource, setManualSource] = useState<"card" | "cash">("card");
   const mounted = useRef(true);
 
   useEffect(() => {
@@ -94,6 +112,57 @@ export function CommitmentsCard({ base, onChanged }: { base: number; onChanged: 
     setSuggestions((prev) => prev.filter((x) => x.matcher !== s.matcher));
   };
 
+  const addManual = async () => {
+    const amountMinor = Math.round(parseFloat(manualAmount.replace(",", ".")) * 100);
+    if (!manualName.trim() || !Number.isFinite(amountMinor) || amountMinor <= 0) return;
+    setBusy(true);
+    try {
+      const res = await fetch("/api/commitments", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          name: manualName.trim(),
+          amount: amountMinor,
+          currency: manualCurrency,
+          cadence: manualCadence,
+          anchorDay: manualAnchorDay,
+          matcher: null,
+          source: manualSource,
+        }),
+      });
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      setManualName("");
+      setManualAmount("");
+      setManualSource("card");
+      setAdding(false);
+      await load();
+      onChanged();
+    } catch (e) {
+      if (mounted.current) setError((e as Error).message);
+    } finally {
+      if (mounted.current) setBusy(false);
+    }
+  };
+
+  const toggleSource = async (c: CommitmentRow) => {
+    const nextSource = c.source === "cash" ? "card" : "cash";
+    setBusy(true);
+    try {
+      const res = await fetch("/api/commitments", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ id: c.id, source: nextSource }),
+      });
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      await load();
+      onChanged();
+    } catch (e) {
+      if (mounted.current) setError((e as Error).message);
+    } finally {
+      if (mounted.current) setBusy(false);
+    }
+  };
+
   const remove = async (id: number) => {
     setBusy(true);
     try {
@@ -109,17 +178,152 @@ export function CommitmentsCard({ base, onChanged }: { base: number; onChanged: 
     .filter((c) => c.cadence === "monthly")
     .reduce((s, c) => s + c.amount, 0);
 
+  const cardMonthly = (items ?? [])
+    .filter((c) => c.cadence === "monthly" && c.source !== "cash")
+    .reduce((s, c) => s + c.amount, 0);
+
+  const cashMonthly = (items ?? [])
+    .filter((c) => c.cadence === "monthly" && c.source === "cash")
+    .reduce((s, c) => s + c.amount, 0);
+
   return (
     <Card>
       <CardHeader>
-        <CardTitle className="flex items-center gap-2 text-sm">
-          <Repeat className="size-4" /> Регулярні платежі
-        </CardTitle>
+        <div className="flex items-center justify-between">
+          <CardTitle className="flex items-center gap-2 text-sm">
+            <Repeat className="size-4" /> Регулярні платежі
+          </CardTitle>
+          <Button
+            variant="outline"
+            size="sm"
+            className="h-7 gap-1 text-xs"
+            onClick={() => setAdding((v) => !v)}
+          >
+            <Plus className="size-3.5" /> Додати платіж
+          </Button>
+        </div>
         <p className="text-xs text-muted-foreground">
-          Те, що спишеться саме. Резервується з денного ліміту.
+          Те, що спишеться або оплачується регулярно (оренда, зв'язок, підписки). Резервується з денного ліміту.
         </p>
       </CardHeader>
       <CardContent className="space-y-3">
+        {adding && (
+          <div className="space-y-3 rounded-2xl border bg-secondary/50 p-3.5">
+            <div className="text-xs font-semibold">Новий регулярний платіж</div>
+            <Input
+              placeholder="Назва (напр. Оренда квартири, Спортзал)"
+              value={manualName}
+              onChange={(e) => setManualName(e.target.value)}
+              className="h-9 text-sm"
+            />
+
+            {/* Вибір джерела: Картка чи Готівка */}
+            <div className="space-y-1">
+              <div className="text-[11px] text-muted-foreground font-medium">Спосіб оплати:</div>
+              <div className="flex rounded-xl bg-background p-1 border border-border/60">
+                <button
+                  type="button"
+                  onClick={() => setManualSource("card")}
+                  className={cn(
+                    "flex-1 py-1.5 text-xs rounded-lg transition-all flex items-center justify-center gap-1.5",
+                    manualSource === "card"
+                      ? "bg-primary text-primary-foreground font-semibold shadow-xs"
+                      : "text-muted-foreground hover:text-foreground"
+                  )}
+                >
+                  <CreditCard className="size-3.5" /> Картка
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setManualSource("cash")}
+                  className={cn(
+                    "flex-1 py-1.5 text-xs rounded-lg transition-all flex items-center justify-center gap-1.5",
+                    manualSource === "cash"
+                      ? "bg-primary text-primary-foreground font-semibold shadow-xs"
+                      : "text-muted-foreground hover:text-foreground"
+                  )}
+                >
+                  <Banknote className="size-3.5" /> Готівка
+                </button>
+              </div>
+            </div>
+
+            <div className="grid grid-cols-2 gap-2">
+              <Input
+                type="number"
+                step="0.01"
+                placeholder="Сума"
+                value={manualAmount}
+                onChange={(e) => setManualAmount(e.target.value)}
+                className="h-9 text-sm"
+              />
+              <Select value={String(manualCurrency)} onValueChange={(v) => setManualCurrency(Number(v))}>
+                <SelectTrigger className="h-9 text-sm">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {[980, 840, 978].map((c) => (
+                    <SelectItem key={c} value={String(c)}>
+                      {currencyMeta(c).code}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="grid grid-cols-2 gap-2">
+              <Select value={manualCadence} onValueChange={(v) => setManualCadence(v as Cadence)}>
+                <SelectTrigger className="h-9 text-sm">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="monthly">Щомісяця</SelectItem>
+                  <SelectItem value="weekly">Щотижня</SelectItem>
+                </SelectContent>
+              </Select>
+              {manualCadence === "monthly" ? (
+                <Select value={String(manualAnchorDay)} onValueChange={(v) => setManualAnchorDay(Number(v))}>
+                  <SelectTrigger className="h-9 text-sm">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {Array.from({ length: 31 }, (_, i) => i + 1).map((d) => (
+                      <SelectItem key={d} value={String(d)}>
+                        {d}-го числа
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              ) : (
+                <Select value={String(manualAnchorDay)} onValueChange={(v) => setManualAnchorDay(Number(v))}>
+                  <SelectTrigger className="h-9 text-sm">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {WEEKDAYS.map((w, idx) => (
+                      <SelectItem key={idx} value={String(idx)}>
+                        Що{idx === 0 || idx === 6 ? "неділі" : "дня"}: {w}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              )}
+            </div>
+            <div className="flex gap-2 pt-1">
+              <Button
+                size="sm"
+                className="h-8 flex-1 text-xs"
+                onClick={addManual}
+                disabled={busy || !manualName.trim() || !manualAmount}
+              >
+                Зберегти платіж
+              </Button>
+              <Button size="sm" variant="ghost" className="h-8 text-xs" onClick={() => setAdding(false)}>
+                Скасувати
+              </Button>
+            </div>
+          </div>
+        )}
+
         {error && <p className="text-sm text-destructive">Не вдалося завантажити: {error}</p>}
 
         {items === null && !error && (
@@ -132,31 +336,71 @@ export function CommitmentsCard({ base, onChanged }: { base: number; onChanged: 
 
         {items !== null && items.length > 0 && (
           <>
-            {items.map((c) => (
-              <div key={c.id} className="flex items-center justify-between gap-2 text-sm">
-                <div className="min-w-0">
-                  <div className="truncate font-medium">{c.name}</div>
-                  <div className="text-xs text-muted-foreground">{when(c.cadence, c.anchor_day)}</div>
+            {items.map((c) => {
+              const isCash = c.source === "cash";
+              return (
+                <div key={c.id} className="flex items-center justify-between gap-2 text-sm p-1 rounded-xl hover:bg-secondary/40 transition-colors">
+                  <div className="min-w-0 pr-1">
+                    <div className="flex items-center gap-2">
+                      <span className="truncate font-medium">{c.name}</span>
+                      <button
+                        type="button"
+                        onClick={() => void toggleSource(c)}
+                        title="Натисніть, щоб перемкнути (Картка / Готівка)"
+                        disabled={busy}
+                        className={cn(
+                          "inline-flex items-center gap-1 rounded-md px-1.5 py-0.5 text-[10px] font-medium border transition-colors cursor-pointer shrink-0",
+                          isCash
+                            ? "border-emerald-500/30 bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 hover:bg-emerald-500/20"
+                            : "border-blue-500/30 bg-blue-500/10 text-blue-600 dark:text-blue-400 hover:bg-blue-500/20"
+                        )}
+                      >
+                        {isCash ? (
+                          <>
+                            <Banknote className="size-3" /> Готівка
+                          </>
+                        ) : (
+                          <>
+                            <CreditCard className="size-3" /> Картка
+                          </>
+                        )}
+                      </button>
+                    </div>
+                    <div className="text-xs text-muted-foreground">{when(c.cadence, c.anchor_day)}</div>
+                  </div>
+                  <div className="flex shrink-0 items-center gap-2">
+                    <span className="tabular-nums font-semibold">{formatMoney(c.amount, c.currency)}</span>
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      className="size-7 text-muted-foreground hover:text-destructive"
+                      onClick={() => void remove(c.id)}
+                      disabled={busy}
+                      title="Прибрати"
+                    >
+                      <Trash2 className="size-3.5" />
+                    </Button>
+                  </div>
                 </div>
-                <div className="flex shrink-0 items-center gap-2">
-                  <span className="tabular-nums">{formatMoney(c.amount, c.currency)}</span>
-                  <Button
-                    variant="ghost"
-                    size="icon"
-                    className="size-7 text-muted-foreground hover:text-destructive"
-                    onClick={() => void remove(c.id)}
-                    disabled={busy}
-                    title="Прибрати"
-                  >
-                    <Trash2 className="size-3.5" />
-                  </Button>
-                </div>
-              </div>
-            ))}
+              );
+            })}
             {monthly > 0 && (
-              <p className="border-t border-border pt-2 text-xs text-muted-foreground">
-                Щомісяця: {formatMoney(monthly, base)}
-              </p>
+              <div className="border-t border-border pt-2.5 text-xs text-muted-foreground space-y-1">
+                <div className="flex items-center justify-between font-medium text-foreground">
+                  <span>Щомісяця загалом:</span>
+                  <span className="tabular-nums font-bold">{formatMoney(monthly, base)}</span>
+                </div>
+                {(cardMonthly > 0 || cashMonthly > 0) && (
+                  <div className="flex items-center justify-between text-[11px]">
+                    <span className="text-muted-foreground">
+                      Картка: <span className="text-foreground font-medium">{formatMoney(cardMonthly, base)}</span>
+                    </span>
+                    <span className="text-muted-foreground">
+                      Готівка: <span className="text-foreground font-medium">{formatMoney(cashMonthly, base)}</span>
+                    </span>
+                  </div>
+                )}
+              </div>
             )}
           </>
         )}

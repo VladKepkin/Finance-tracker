@@ -9,8 +9,10 @@ import { Input } from "@/components/ui/input";
 
 export default function LoginPage() {
   const router = useRouter();
+  const [mode, setMode] = useState<"login" | "register">("login");
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
+  const [inviteCode, setInviteCode] = useState("");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -19,14 +21,19 @@ export default function LoginPage() {
     setLoading(true);
     setError(null);
     try {
-      const res = await fetch("/api/auth/login", {
+      const endpoint = mode === "login" ? "/api/auth/login" : "/api/auth/register";
+      const payload: Record<string, string> = { username: username.trim(), password };
+      if (mode === "register" && inviteCode.trim()) {
+        payload.inviteCode = inviteCode.trim();
+      }
+      const res = await fetch(endpoint, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ username: username.trim(), password }),
+        body: JSON.stringify(payload),
       });
       if (!res.ok) {
         const data = await res.json().catch(() => ({}));
-        throw new Error(data.error || "Не вдалося увійти");
+        throw new Error(data.error || (mode === "login" ? "Не вдалося увійти" : "Не вдалося зареєструватися"));
       }
       router.replace("/");
       router.refresh();
@@ -45,10 +52,41 @@ export default function LoginPage() {
           </div>
 
           <div className="space-y-2">
-            <h1 className="text-2xl font-semibold tracking-tight">Вхід у Money</h1>
+            <h1 className="text-2xl font-semibold tracking-tight">
+              {mode === "login" ? "Вхід у Money" : "Реєстрація акаунта"}
+            </h1>
             <p className="text-sm text-muted-foreground">
-              Введи логін і пароль, щоб отримати доступ до свого гаманця.
+              {mode === "login"
+                ? "Введи логін і пароль, щоб отримати доступ до свого гаманця."
+                : "Створи свій особистий акаунт. Можна вказати код запрошення в сім'ю."}
             </p>
+          </div>
+
+          <div className="flex rounded-xl bg-muted p-1 text-xs font-medium">
+            <button
+              type="button"
+              onClick={() => {
+                setMode("login");
+                setError(null);
+              }}
+              className={`flex-1 rounded-lg py-1.5 transition-all ${
+                mode === "login" ? "bg-background text-foreground shadow-xs" : "text-muted-foreground"
+              }`}
+            >
+              Вхід
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                setMode("register");
+                setError(null);
+              }}
+              className={`flex-1 rounded-lg py-1.5 transition-all ${
+                mode === "register" ? "bg-background text-foreground shadow-xs" : "text-muted-foreground"
+              }`}
+            >
+              Новий користувач
+            </button>
           </div>
 
           <div className="space-y-3">
@@ -65,11 +103,20 @@ export default function LoginPage() {
               type="password"
               value={password}
               onChange={(e) => setPassword(e.target.value)}
-              placeholder="Пароль"
-              autoComplete="current-password"
+              placeholder="Пароль (від 6 символів)"
+              autoComplete={mode === "login" ? "current-password" : "new-password"}
               className="h-11"
               onKeyDown={(e) => e.key === "Enter" && submit()}
             />
+            {mode === "register" && (
+              <Input
+                value={inviteCode}
+                onChange={(e) => setInviteCode(e.target.value)}
+                placeholder="Код запрошення в сім'ю (якщо є)"
+                className="h-11 font-mono uppercase"
+                onKeyDown={(e) => e.key === "Enter" && submit()}
+              />
+            )}
             {error && <p className="text-sm text-destructive">{error}</p>}
             <Button
               onClick={submit}
@@ -78,15 +125,14 @@ export default function LoginPage() {
               className="w-full"
             >
               {loading ? <Loader2 className="size-4 spin" /> : <LogIn className="size-4" />}
-              {loading ? "Вхід…" : "Увійти"}
+              {loading ? (mode === "login" ? "Вхід…" : "Створення…") : (mode === "login" ? "Увійти" : "Зареєструватися")}
             </Button>
           </div>
 
           <div className="flex items-start gap-2 rounded-xl bg-secondary p-3 text-xs text-muted-foreground">
             <LockKeyhole className="mt-0.5 size-4 shrink-0 text-success" />
             <span>
-              Сесія зберігається у захищеній httpOnly-кукі. Дані гаманця живуть на твоєму
-              сервері під цим акаунтом.
+              Сесія зберігається у захищеній httpOnly-кукі. Твої особисті картки та виписка захищені й ізольовані від інших акаунтів.
             </span>
           </div>
         </CardContent>

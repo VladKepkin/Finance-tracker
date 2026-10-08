@@ -7,6 +7,7 @@ export interface CreateInput {
   cadence: Cadence;
   anchorDay: number;
   matcher: string | null;
+  source?: "card" | "cash";
 }
 
 export interface PatchInput {
@@ -14,6 +15,7 @@ export interface PatchInput {
   amount?: number;
   cadence?: Cadence;
   anchorDay?: number;
+  source?: "card" | "cash";
 }
 
 export type ParseResult<T> = { ok: true; value: T } | { ok: false; error: string };
@@ -55,6 +57,8 @@ export function parseCreate(body: unknown): ParseResult<CreateInput> {
     return { ok: false, error: "Некоректний день" };
   }
 
+  const source = body.source === "cash" ? "cash" : "card";
+
   return {
     ok: true,
     value: {
@@ -64,6 +68,7 @@ export function parseCreate(body: unknown): ParseResult<CreateInput> {
       cadence: body.cadence,
       anchorDay: body.anchorDay,
       matcher: typeof body.matcher === "string" ? body.matcher : null,
+      source,
     },
   };
 }
@@ -100,6 +105,13 @@ export function parsePatch(body: unknown, storedCadence: Cadence): ParseResult<P
       return { ok: false, error: "Некоректний день" };
     }
     patch.anchorDay = body.anchorDay;
+  }
+
+  if (body.source !== undefined) {
+    if (body.source !== "card" && body.source !== "cash") {
+      return { ok: false, error: "Некоректне джерело платежу" };
+    }
+    patch.source = body.source;
   }
 
   return { ok: true, value: patch };

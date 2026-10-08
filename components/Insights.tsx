@@ -1,16 +1,23 @@
 "use client";
 
+import { useState } from "react";
 import {
-  CheckCircle2,
-  AlertTriangle,
-  XCircle,
-  Info,
-  CalendarRange,
-  Activity,
   TrendingUp,
   TrendingDown,
   PiggyBank,
   CalendarDays,
+  CalendarRange,
+  PieChart as PieChartIcon,
+  Store,
+  AlertTriangle,
+  CheckCircle2,
+  XCircle,
+  Info,
+  Clock,
+  Edit2,
+  Check,
+  X,
+  Sparkles,
 } from "lucide-react";
 import type { AnalyticsResult } from "@/lib/analytics";
 import type { Strategy, StrategyLevel } from "@/lib/strategies";
@@ -21,10 +28,12 @@ import { formatMoney } from "@/lib/format";
 import { currencyMeta } from "@/lib/monobank";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Joy } from "@/components/Joy";
 import { Disclosure } from "@/components/ui/disclosure";
 import { CategoryPie, IncomeExpenseBars } from "@/components/Charts";
+import { cn } from "@/lib/utils";
 
 export interface MetricsView {
   dailyMedian: number | null;
@@ -69,13 +78,14 @@ export function Insights({
   joyRatingsLoading: boolean;
   joyRatingsError: string | null;
 }) {
-  const sym = currencyMeta(base).symbol;
+  const [editingCatKey, setEditingCatKey] = useState<string | null>(null);
+  const [editingLimitValue, setEditingLimitValue] = useState("");
 
   const incomeText =
     analytics.totalIncome !== null
       ? formatMoney(analytics.totalIncome, base)
       : analytics.incomeLoading
-        ? "Зарплати завантажуються…"
+        ? "Завантаження…"
         : `Немає курсу для ${currencyMeta(analytics.incomeFxUnavailableCurrency ?? 0).code}`;
 
   const expenseText =
@@ -83,354 +93,436 @@ export function Insights({
       ? formatMoney(analytics.totalExpense, base)
       : `Немає курсу для ${currencyMeta(analytics.expenseFxUnavailableCurrency ?? 0).code}`;
 
+  const netValue = analytics.net;
+  const isPositiveNet = netValue !== null && netValue >= 0;
+
+  const handleStartEditBudget = (catKey: string, currentLimitMinor: number) => {
+    setEditingCatKey(catKey);
+    setEditingLimitValue(currentLimitMinor > 0 ? (currentLimitMinor / 100).toString() : "");
+  };
+
+  const handleSaveBudget = (catKey: string) => {
+    const val = Math.round(parseFloat(editingLimitValue.replace(",", ".")) * 100);
+    const nextLimit = Number.isFinite(val) && val > 0 ? val : 0;
+    onBudgetChange({ ...budgets, [catKey]: nextLimit });
+    setEditingCatKey(null);
+  };
+
   return (
-    <div className="animate-in fade-in duration-300 space-y-4">
-      <Card>
-        <CardHeader>
-          <CardTitle className="flex items-center gap-2 text-sm">
-            <Activity className="size-4" /> Типовий день
-          </CardTitle>
-          <p className="text-xs text-muted-foreground">
-            Медіана денних витрат за наявну історію (до 12 місяців). Разові великі покупки не враховані —
-            вони окремо нижче.
-          </p>
-        </CardHeader>
-        <CardContent>
-          {!metrics || metrics.dailyConfidence === "insufficient" ? (
-            <p className="text-sm text-muted-foreground">
-              Замало даних — потрібно щонайменше 14 днів історії.
-            </p>
-          ) : metrics.dailyMedian === null ? (
-            <p className="text-sm text-muted-foreground">
-              Немає курсу для {currencyMeta(metrics.fxUnavailableCurrency ?? 0).code} — типовий день порахувати не можна.
-            </p>
-          ) : (
-            <div className="flex items-baseline gap-2">
-              <span className="text-2xl font-semibold tabular-nums">
-                {formatMoney(metrics.dailyMedian, base)}
-              </span>
-              <span className="text-xs text-muted-foreground">/день</span>
-              {metrics.dailyConfidence === "low" && (
-                <Badge variant="secondary" className="text-[10px]">мало даних</Badge>
+    <div className="animate-in fade-in duration-300 space-y-6">
+      {/* 1. Головне табло періоду (Hero Stats) */}
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+        <Card className="border shadow-xs">
+          <CardContent className="p-4 space-y-1">
+            <div className="flex items-center gap-1.5 text-xs text-muted-foreground font-medium">
+              <TrendingDown className="size-4 text-destructive" /> Витрати
+            </div>
+            <div className="text-xl font-bold tabular-nums font-display tracking-tight text-foreground">
+              {expenseText}
+            </div>
+            {analytics.cardExpense !== null && analytics.cashExpense !== null && analytics.cashExpense > 0 && (
+              <div className="text-[11px] text-muted-foreground truncate">
+                Картка: {formatMoney(analytics.cardExpense, base)} · Готівка: {formatMoney(analytics.cashExpense, base)}
+              </div>
+            )}
+          </CardContent>
+        </Card>
+
+        <Card className="border shadow-xs">
+          <CardContent className="p-4 space-y-1">
+            <div className="flex items-center gap-1.5 text-xs text-muted-foreground font-medium">
+              <TrendingUp className="size-4 text-success" /> Доходи
+            </div>
+            <div className="text-xl font-bold tabular-nums font-display tracking-tight text-success">
+              {incomeText}
+            </div>
+            <div className="text-[11px] text-muted-foreground">
+              {periodLabel}
+            </div>
+          </CardContent>
+        </Card>
+
+        <Card className="border shadow-xs">
+          <CardContent className="p-4 space-y-1">
+            <div className="flex items-center gap-1.5 text-xs text-muted-foreground font-medium">
+              <PiggyBank className="size-4 text-primary" /> Заощаджено
+            </div>
+            <div
+              className={cn(
+                "text-xl font-bold tabular-nums font-display tracking-tight",
+                netValue === null
+                  ? "text-muted-foreground"
+                  : isPositiveNet
+                    ? "text-success"
+                    : "text-destructive"
               )}
+            >
+              {netValue !== null
+                ? `${isPositiveNet ? "+" : ""}${formatMoney(netValue, base)}`
+                : "—"}
+            </div>
+            <div className="text-[11px] text-muted-foreground">
+              {isPositiveNet ? "Позитивний баланс" : "Витрачено більше за дохід"}
+            </div>
+          </CardContent>
+        </Card>
+
+        <Card className="border shadow-xs">
+          <CardContent className="p-4 space-y-1">
+            <div className="flex items-center gap-1.5 text-xs text-muted-foreground font-medium">
+              <CalendarDays className="size-4 text-primary" /> Типовий день
+            </div>
+            <div className="text-xl font-bold tabular-nums font-display tracking-tight text-foreground">
+              {metrics?.dailyMedian !== null && metrics?.dailyMedian !== undefined
+                ? formatMoney(metrics.dailyMedian, base)
+                : "—"}
+            </div>
+            <div className="text-[11px] text-muted-foreground">
+              {metrics?.dailyConfidence === "low" ? "Орієнтовно (мало даних)" : "Медіана денних витрат"}
+            </div>
+          </CardContent>
+        </Card>
+      </div>
+
+      {/* 2. Структура витрат: Кругова діаграма + Топ категорій */}
+      <Card className="border shadow-xs overflow-hidden">
+        <CardHeader className="pb-2">
+          <div className="flex items-center justify-between">
+            <CardTitle className="text-sm font-semibold flex items-center gap-2">
+              <PieChartIcon className="size-4 text-primary" /> Структура витрат за категоріями
+            </CardTitle>
+            <span className="text-xs text-muted-foreground font-medium">{periodLabel}</span>
+          </div>
+        </CardHeader>
+        <CardContent className="p-4 pt-2">
+          {analytics.byCategory.length === 0 ? (
+            <div className="py-12 text-center text-sm text-muted-foreground">
+              За обраний період витрат не знайдено.
+            </div>
+          ) : (
+            <div className="grid grid-cols-1 md:grid-cols-12 gap-6 items-center">
+              <div className="md:col-span-5 flex items-center justify-center">
+                <CategoryPie data={analytics.byCategory} base={base} />
+              </div>
+
+              <div className="md:col-span-7 space-y-3">
+                {analytics.byCategory.slice(0, 7).map((c) => {
+                  const pct =
+                    analytics.totalExpense && analytics.totalExpense > 0
+                      ? Math.round((c.total / analytics.totalExpense) * 100)
+                      : 0;
+                  return (
+                    <div key={c.category.key} className="space-y-1.5">
+                      <div className="flex items-center justify-between text-xs">
+                        <span className="font-medium flex items-center gap-2 text-foreground">
+                          <span>{c.category.emoji}</span>
+                          <span>{c.category.label}</span>
+                        </span>
+                        <div className="flex items-center gap-2 tabular-nums">
+                          <span className="font-semibold text-foreground">
+                            {formatMoney(c.total, base)}
+                          </span>
+                          <span className="text-muted-foreground w-9 text-right">{pct}%</span>
+                        </div>
+                      </div>
+                      <div className="h-1.5 w-full overflow-hidden rounded-full bg-secondary">
+                        <div
+                          className="h-full rounded-full transition-all duration-300"
+                          style={{ width: `${pct}%`, backgroundColor: c.category.color }}
+                        />
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
             </div>
           )}
         </CardContent>
       </Card>
 
-      <Card>
-        <CardHeader>
-          <CardTitle className="flex items-center gap-2 text-sm">
-            <CalendarRange className="size-4" /> Прогноз на місяць
+      {/* 3. Динаміка доходів та витрат по днях */}
+      <Card className="border shadow-xs overflow-hidden">
+        <CardHeader className="pb-2">
+          <div className="flex items-center justify-between">
+            <CardTitle className="text-sm font-semibold flex items-center gap-2">
+              <CalendarRange className="size-4 text-primary" /> Динаміка по днях
+            </CardTitle>
+            <span className="text-xs text-muted-foreground">{periodLabel}</span>
+          </div>
+        </CardHeader>
+        <CardContent className="p-4 pt-2">
+          <IncomeExpenseBars data={analytics.daily} base={base} />
+        </CardContent>
+      </Card>
+
+      {/* 4. Очікувані витрати на місяць (Прогноз людською мовою) */}
+      <Card className="border shadow-xs">
+        <CardHeader className="pb-2">
+          <CardTitle className="text-sm font-semibold flex items-center gap-2">
+            <Clock className="size-4 text-primary" /> Очікувані витрати на місяць
           </CardTitle>
           <p className="text-xs text-muted-foreground">
-            Сценарії — це реальні перцентилі твоїх місяців, а не вигадані коефіцієнти.
+            Статистичний прогноз місячного бюджету на основі вашої історії (без аномальних великих покупок).
           </p>
         </CardHeader>
-        <CardContent className="space-y-3">
+        <CardContent className="p-4 pt-2 space-y-4">
           {!metrics || metrics.monthlyConfidence === "insufficient" ? (
-            <p className="text-sm text-muted-foreground">
-              Замало даних — потрібно щонайменше 3 повні місяці.
+            <p className="text-xs text-muted-foreground py-2">
+              Для формування точного прогнозу потрібно щонайменше 2-3 місяці історії витрат.
             </p>
           ) : metrics.p50 === null ? (
-            <p className="text-sm text-muted-foreground">
-              Немає курсу для {currencyMeta(metrics.fxUnavailableCurrency ?? 0).code} — прогноз порахувати не можна.
+            <p className="text-xs text-muted-foreground py-2">
+              Немає курсу для валюти — прогноз тимчасово недоступний.
             </p>
           ) : (
-            <>
-              <div className="divide-y divide-border/60 rounded-2xl bg-secondary px-3.5">
-                {[
-                  { label: "Оптимістично", v: metrics.p10, hint: "P10" },
-                  { label: "Реалістично", v: metrics.p50, hint: "P50" },
-                  { label: "Консервативно", v: metrics.p90, hint: "P90" },
-                ].map((s) => (
-                  <div key={s.hint} className="flex items-center justify-between gap-3 py-2.5">
-                    <div>
-                      <div className="text-sm">{s.label}</div>
-                      <div className="text-[11px] text-muted-foreground">{s.hint}</div>
-                    </div>
-                    <div className="whitespace-nowrap font-semibold tabular-nums">{formatMoney(s.v!, base)}</div>
+            <div className="space-y-3">
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                <div className="rounded-xl bg-secondary/60 p-3 space-y-1">
+                  <div className="text-xs text-muted-foreground font-medium">Ощадливий місяць</div>
+                  <div className="text-base font-bold tabular-nums font-display">
+                    {formatMoney(metrics.p10!, base)}
                   </div>
-                ))}
+                  <p className="text-[11px] text-muted-foreground">Коли мало непередбачуваних витрат</p>
+                </div>
+
+                <div className="rounded-xl border-2 border-primary/30 bg-primary/5 p-3 space-y-1">
+                  <div className="text-xs font-semibold text-primary">Звичайний темп</div>
+                  <div className="text-base font-bold tabular-nums font-display text-foreground">
+                    {formatMoney(metrics.p50!, base)}
+                  </div>
+                  <p className="text-[11px] text-muted-foreground">Ваш реальний медіанний рівень</p>
+                </div>
+
+                <div className="rounded-xl bg-secondary/60 p-3 space-y-1">
+                  <div className="text-xs text-muted-foreground font-medium">Витратний місяць</div>
+                  <div className="text-base font-bold tabular-nums font-display">
+                    {formatMoney(metrics.p90!, base)}
+                  </div>
+                  <p className="text-[11px] text-muted-foreground">З подарунками або святами</p>
+                </div>
               </div>
-              {metrics.monthlyConfidence === "low" && (
-                <Badge variant="secondary" className="text-[10px]">мало місяців — оцінка груба</Badge>
-              )}
+
               {metrics.runway && (
-                <div className="rounded-xl bg-secondary p-3 text-sm">
+                <div className="rounded-xl border bg-secondary/40 p-3 text-xs leading-relaxed">
                   {metrics.runway.infinite ? (
-                    <span className="text-success">
-                      Дохід перекриває навіть найвитратніший місяць — запас не проїдається.
+                    <span className="text-success font-medium flex items-center gap-1.5">
+                      <CheckCircle2 className="size-4 shrink-0" />
+                      Ваш дохід перекриває навіть найвитратніший місяць — резерви та накопичення не проїдаються.
                     </span>
                   ) : (
-                    <>
-                      За консервативного сценарію запасу вистачить на{" "}
-                      <span className="font-semibold tabular-nums">{metrics.runway.days} дн.</span>{" "}
-                      <span className="text-muted-foreground">(до {metrics.runway.exhaustDate})</span>
-                    </>
+                    <span>
+                      За консервативного сценарію поточного запасу ліквідних коштів вистачить на{" "}
+                      <strong className="font-semibold tabular-nums text-foreground">{metrics.runway.days} днів</strong>{" "}
+                      (орієнтовно до {metrics.runway.exhaustDate}).
+                    </span>
                   )}
                 </div>
               )}
-              {!metrics.runway && metrics.incomeUnavailableReason && (
-                <p className="text-xs text-muted-foreground">{metrics.incomeUnavailableReason}</p>
-              )}
-            </>
+            </div>
           )}
         </CardContent>
       </Card>
 
-      <Joy
-        categories={joy}
-        ratedCount={joyRatedCount}
-        ratableCount={joyRatableCount}
-        fxUnavailableCurrency={joyFxUnavailableCurrency}
-        ratingsLoading={joyRatingsLoading}
-        ratingsError={joyRatingsError}
-        base={base}
-      />
-
-      {metrics && (metrics.anomalies.length > 0 || metrics.anomaliesFxUnavailable !== null) && (
-        <Disclosure title="Разові витрати">
-          <p className="mb-2 text-xs text-muted-foreground">
-            Виділені з «типового дня», щоб не спотворювати картину. Гроші, звісно, витрачені.
-          </p>
-          <div className="space-y-2">
-            {metrics.anomaliesFxUnavailable !== null ? (
-              <p className="text-sm text-muted-foreground">
-                Немає курсу для {currencyMeta(metrics.anomaliesFxUnavailable).code} — суми порахувати не можна.
-              </p>
-            ) : (
-              metrics.anomalies.map((a) => (
-                <div key={a.date} className="flex items-center justify-between text-sm">
-                  <span className="text-muted-foreground">{a.date}</span>
-                  <span className="tabular-nums">{formatMoney(a.expense, base)}</span>
-                </div>
-              ))
-            )}
-          </div>
-        </Disclosure>
-      )}
-
-      <Disclosure title="Графіки: дохід і витрати за період">
-        <div className="space-y-4">
-          <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
-            <Stat icon={<TrendingUp className="size-4" />} label="Дохід" value={incomeText} color="text-success" />
-            <Stat icon={<TrendingDown className="size-4" />} label="Витрати" value={expenseText} color="text-destructive" />
-            <Stat
-              icon={<PiggyBank className="size-4" />}
-              label="Заощаджено"
-              value={
-                analytics.net !== null
-                  ? formatMoney(analytics.net, base)
-                  : analytics.totalIncome === null
-                    ? incomeText
-                    : expenseText
-              }
-              color={analytics.net === null ? "text-muted-foreground" : analytics.net >= 0 ? "text-success" : "text-destructive"}
-            />
-            <Stat
-              icon={<CalendarDays className="size-4" />}
-              label="Типовий день"
-              value={metrics?.dailyMedian == null ? "—" : formatMoney(metrics.dailyMedian, base)}
-              color="text-primary"
-            />
-          </div>
-
-          {analytics.expenseFxUnavailableCurrency !== null ? (
-            <div className="flex items-start gap-2 rounded-xl bg-secondary p-3 text-xs">
-              <AlertTriangle className="mt-0.5 size-4 shrink-0 text-warning" />
-              <span>
-                Немає курсу для {currencyMeta(analytics.expenseFxUnavailableCurrency).code} — графік і
-                структуру витрат за період порахувати не можна.
-              </span>
-            </div>
-          ) : (
-            <>
-              <Card>
-                <CardHeader>
-                  <CardTitle className="text-sm">Дохід проти витрат</CardTitle>
-                  <p className="text-xs text-muted-foreground">{periodLabel}</p>
-                </CardHeader>
-                <CardContent>
-                  <IncomeExpenseBars data={analytics.daily} base={base} />
-                </CardContent>
-              </Card>
-
-              <div className="grid gap-4 lg:grid-cols-2">
-                <Card>
-                  <CardHeader>
-                    <CardTitle className="text-sm">Структура витрат</CardTitle>
-                  </CardHeader>
-                  <CardContent>
-                    <CategoryPie data={analytics.byCategory} base={base} />
-                  </CardContent>
-                </Card>
-                <Card>
-                  <CardHeader>
-                    <CardTitle className="text-sm">Топ категорій</CardTitle>
-                  </CardHeader>
-                  <CardContent className="space-y-3">
-                    {analytics.byCategory.slice(0, 6).map((c) => {
-                      const pct = analytics.totalExpense && analytics.totalExpense > 0 ? (c.total / analytics.totalExpense) * 100 : 0;
-                      return (
-                        <div key={c.category.key}>
-                          <div className="flex items-center justify-between text-sm">
-                            <span>
-                              {c.category.emoji} {c.category.label}
-                            </span>
-                            <span className="tabular-nums">{formatMoney(c.total, base)}</span>
-                          </div>
-                          <div className="mt-1.5 h-2 w-full overflow-hidden rounded-full bg-secondary">
-                            <div
-                              className="meter-fill h-full rounded-full"
-                              style={{ width: `${pct}%`, background: c.category.color }}
-                            />
-                          </div>
-                        </div>
-                      );
-                    })}
-                    {analytics.byCategory.length === 0 && (
-                      <p className="text-sm text-muted-foreground">Немає витрат за обраний період.</p>
-                    )}
-                  </CardContent>
-                </Card>
-              </div>
-            </>
-          )}
-        </div>
-      </Disclosure>
-
-      <Disclosure title="Бюджети по категоріях">
-        <p className="mb-3 text-xs text-muted-foreground">
-          Задай місячний ліміт ({sym}) — і слідкуй, скільки вже витрачено за період.
-        </p>
-        <div className="space-y-4">
-          {analytics.byCategory.slice(0, 8).map((c) => {
-            const limit = budgets[c.category.key] ?? 0;
-            const pct = limit > 0 ? Math.min(100, (c.total / limit) * 100) : 0;
-            const over = limit > 0 && c.total > limit;
-            return (
-              <div key={c.category.key}>
-                <div className="flex items-center justify-between gap-2 text-sm">
-                  <span className="min-w-0 truncate">
-                    {c.category.emoji} {c.category.label}
-                  </span>
-                  <div className="flex shrink-0 items-center gap-2">
-                    <span className={`whitespace-nowrap tabular-nums ${over ? "text-destructive" : ""}`}>
-                      {formatMoney(c.total, base)}
-                    </span>
-                    <span className="text-muted-foreground">/</span>
-                    <Input
-                      type="number"
-                      value={limit ? limit / 100 : ""}
-                      placeholder="ліміт"
-                      onChange={(e) => {
-                        const v = Math.round(parseFloat(e.target.value || "0") * 100);
-                        onBudgetChange({ ...budgets, [c.category.key]: v > 0 ? v : 0 });
-                      }}
-                      className="h-7 w-20 px-2 text-right text-xs tabular-nums"
-                    />
-                  </div>
-                </div>
-                {limit > 0 && (
-                  <div className="mt-1.5 h-2 w-full overflow-hidden rounded-full bg-secondary">
-                    <div
-                      className="meter-fill h-full rounded-full"
-                      style={{ width: `${pct}%`, background: over ? "var(--destructive)" : c.category.color }}
-                    />
-                  </div>
-                )}
-              </div>
-            );
-          })}
-          {analytics.byCategory.length === 0 &&
-            (analytics.expenseFxUnavailableCurrency !== null ? (
-              <p className="text-sm text-muted-foreground">
-                Немає курсу для {currencyMeta(analytics.expenseFxUnavailableCurrency).code} — бюджети
-                порахувати не можна.
-              </p>
-            ) : (
-              <p className="text-sm text-muted-foreground">Немає витрат для встановлення бюджетів.</p>
-            ))}
-        </div>
-      </Disclosure>
-
-      {(analytics.topMerchants.length > 0 || analytics.expenseFxUnavailableCurrency !== null) && (
-        <Disclosure title="Найбільші отримувачі коштів">
-          {analytics.expenseFxUnavailableCurrency !== null && (
-            <p className="mb-2 text-sm text-muted-foreground">
-              Немає курсу для {currencyMeta(analytics.expenseFxUnavailableCurrency).code} — суми
-              порахувати не можна.
+      {/* 5. Бюджети по категоріях та Найбільші отримувачі коштів */}
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 items-start">
+        {/* Бюджети категорій */}
+        <Card className="border shadow-xs">
+          <CardHeader className="pb-2">
+            <CardTitle className="text-sm font-semibold flex items-center gap-2">
+              <Sparkles className="size-4 text-warning" /> Бюджети за категоріями
+            </CardTitle>
+            <p className="text-xs text-muted-foreground">
+              Встановіть комфортний щомісячний ліміт і слідкуйте за його дотриманням.
             </p>
-          )}
-          <div className="space-y-2.5">
-            {analytics.topMerchants.map((m, i) => (
-              <div key={i} className="flex items-center justify-between text-sm">
-                <span className="truncate pr-3">{m.name}</span>
-                <span className="shrink-0 tabular-nums text-muted-foreground">
-                  {m.count}× · {formatMoney(m.total, base)}
-                </span>
+          </CardHeader>
+          <CardContent className="p-4 pt-2 space-y-4">
+            {analytics.byCategory.slice(0, 8).map((c) => {
+              const limit = budgets[c.category.key] ?? 0;
+              const hasLimit = limit > 0;
+              const pct = hasLimit ? Math.min(100, Math.round((c.total / limit) * 100)) : 0;
+              const isOver = hasLimit && c.total > limit;
+              const isEditing = editingCatKey === c.category.key;
+
+              return (
+                <div key={c.category.key} className="space-y-1.5">
+                  <div className="flex items-center justify-between text-xs">
+                    <span className="font-medium flex items-center gap-1.5 text-foreground truncate max-w-[160px]">
+                      <span>{c.category.emoji}</span>
+                      <span className="truncate">{c.category.label}</span>
+                    </span>
+
+                    <div className="flex items-center gap-2 shrink-0">
+                      {isEditing ? (
+                        <div className="flex items-center gap-1">
+                          <Input
+                            type="number"
+                            inputMode="decimal"
+                            value={editingLimitValue}
+                            onChange={(e) => setEditingLimitValue(e.target.value)}
+                            placeholder="0"
+                            className="h-7 w-20 text-xs text-right tabular-nums px-1.5"
+                            autoFocus
+                            onKeyDown={(e) => e.key === "Enter" && handleSaveBudget(c.category.key)}
+                          />
+                          <button
+                            type="button"
+                            onClick={() => handleSaveBudget(c.category.key)}
+                            className="size-7 flex items-center justify-center rounded-lg bg-primary text-primary-foreground"
+                          >
+                            <Check className="size-3.5" />
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => setEditingCatKey(null)}
+                            className="size-7 flex items-center justify-center rounded-lg text-muted-foreground hover:bg-secondary"
+                          >
+                            <X className="size-3.5" />
+                          </button>
+                        </div>
+                      ) : (
+                        <div className="flex items-center gap-1.5">
+                          <span className={cn("font-semibold tabular-nums", isOver && "text-destructive")}>
+                            {formatMoney(c.total, base)}
+                          </span>
+                          <span className="text-muted-foreground">/</span>
+                          <button
+                            type="button"
+                            onClick={() => handleStartEditBudget(c.category.key, limit)}
+                            className="text-muted-foreground hover:text-foreground hover:underline tabular-nums flex items-center gap-1"
+                            title="Змінити місячний ліміт"
+                          >
+                            <span>{hasLimit ? formatMoney(limit, base) : "Задати ліміт"}</span>
+                            <Edit2 className="size-2.5 opacity-50" />
+                          </button>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+
+                  {hasLimit && (
+                    <div className="h-1.5 w-full overflow-hidden rounded-full bg-secondary">
+                      <div
+                        className={cn(
+                          "h-full rounded-full transition-all duration-300",
+                          isOver ? "bg-destructive" : "bg-primary"
+                        )}
+                        style={{ width: `${pct}%` }}
+                      />
+                    </div>
+                  )}
+                </div>
+              );
+            })}
+
+            {analytics.byCategory.length === 0 && (
+              <p className="text-xs text-muted-foreground py-4 text-center">
+                Немає витрат для встановлення лімітів.
+              </p>
+            )}
+          </CardContent>
+        </Card>
+
+        {/* Топ отримувачів коштів */}
+        <Card className="border shadow-xs">
+          <CardHeader className="pb-2">
+            <CardTitle className="text-sm font-semibold flex items-center gap-2">
+              <Store className="size-4 text-primary" /> Топ місць покупок
+            </CardTitle>
+            <p className="text-xs text-muted-foreground">
+              Продавці та сервіси, де ви залишили найбільше коштів за період.
+            </p>
+          </CardHeader>
+          <CardContent className="p-4 pt-2">
+            {analytics.topMerchants.length === 0 ? (
+              <p className="text-xs text-muted-foreground py-4 text-center">
+                Немає даних за обраний період.
+              </p>
+            ) : (
+              <div className="divide-y text-xs">
+                {analytics.topMerchants.slice(0, 8).map((m, i) => (
+                  <div key={i} className="flex items-center justify-between py-2.5 first:pt-0 last:pb-0">
+                    <div className="min-w-0 pr-3">
+                      <div className="font-semibold text-foreground truncate">{m.name}</div>
+                      <div className="text-[11px] text-muted-foreground">{m.count} покупок</div>
+                    </div>
+                    <div className="font-bold tabular-nums font-display text-sm shrink-0">
+                      {formatMoney(m.total, base)}
+                    </div>
+                  </div>
+                ))}
               </div>
+            )}
+          </CardContent>
+        </Card>
+      </div>
+
+      {/* 6. Додаткові блоки: Разові великі покупки, Joy, Стратегії */}
+      <div className="space-y-4 pt-2">
+        {/* Разові аномальні покупки */}
+        {metrics && (metrics.anomalies.length > 0 || metrics.anomaliesFxUnavailable !== null) && (
+          <Disclosure title="Разові великі покупки">
+            <div className="space-y-2 pt-1 text-xs">
+              <p className="text-muted-foreground leading-relaxed">
+                Ці операції відокремлені від регулярного «типового дня», щоб не викривляти повсякденну статистику.
+              </p>
+              <div className="divide-y rounded-xl border bg-card p-3">
+                {metrics.anomalies.map((a) => (
+                  <div key={a.date} className="flex items-center justify-between py-2 first:pt-0 last:pb-0">
+                    <span className="text-muted-foreground">{a.date}</span>
+                    <span className="font-semibold tabular-nums text-foreground">
+                      {formatMoney(a.expense, base)}
+                    </span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          </Disclosure>
+        )}
+
+        {/* Емоційне задоволення від покупок (Joy) */}
+        <Joy
+          categories={joy}
+          ratedCount={joyRatedCount}
+          ratableCount={joyRatableCount}
+          fxUnavailableCurrency={joyFxUnavailableCurrency}
+          ratingsLoading={joyRatingsLoading}
+          ratingsError={joyRatingsError}
+          base={base}
+        />
+
+        {/* Розумні поради та фінансові стратегії */}
+        <Disclosure title="Фінансові поради та стратегії">
+          <div className="space-y-3 pt-1">
+            {strategies.map((s) => (
+              <StrategyCard key={s.id} s={s} />
             ))}
           </div>
         </Disclosure>
-      )}
-
-      <Disclosure title="Поради: стратегії розвитку">
-        <div className="space-y-3">
-          {strategies.map((s) => (
-            <StrategyCard key={s.id} s={s} />
-          ))}
-        </div>
-      </Disclosure>
+      </div>
     </div>
   );
 }
 
-function Stat({
-  icon,
-  label,
-  value,
-  color,
-}: {
-  icon: React.ReactNode;
-  label: string;
-  value: string;
-  color: string;
-}) {
-  return (
-    <Card>
-      <CardContent className="px-4">
-        <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
-          <span className={color}>{icon}</span>
-          {label}
-        </div>
-        <div className="mt-1.5 whitespace-nowrap text-base font-semibold tabular-nums">{value}</div>
-      </CardContent>
-    </Card>
-  );
-}
-
 const LEVEL_STYLE: Record<StrategyLevel, { icon: React.ReactNode; color: string }> = {
-  good: { icon: <CheckCircle2 className="size-[18px]" />, color: "var(--success)" },
-  warn: { icon: <AlertTriangle className="size-[18px]" />, color: "var(--warning)" },
-  bad: { icon: <XCircle className="size-[18px]" />, color: "var(--destructive)" },
-  info: { icon: <Info className="size-[18px]" />, color: "var(--primary)" },
+  good: { icon: <CheckCircle2 className="size-4" />, color: "var(--success)" },
+  warn: { icon: <AlertTriangle className="size-4" />, color: "var(--warning)" },
+  bad: { icon: <XCircle className="size-4" />, color: "var(--destructive)" },
+  info: { icon: <Info className="size-4" />, color: "var(--primary)" },
 };
 
 function StrategyCard({ s }: { s: Strategy }) {
   const m = LEVEL_STYLE[s.level];
   return (
-    <Card>
-      <CardContent className="space-y-2">
+    <Card className="border shadow-xs">
+      <CardContent className="p-3.5 space-y-2">
         <div className="flex gap-3">
           <span className="mt-0.5 shrink-0" style={{ color: m.color }}>
             {m.icon}
           </span>
           <div className="min-w-0 flex-1">
-            <div className="text-sm font-semibold">{s.title}</div>
+            <div className="text-xs font-semibold">{s.title}</div>
             {s.metric && <div className="mt-0.5 text-xs tabular-nums text-muted-foreground">{s.metric}</div>}
-            <div className="mt-0.5 text-sm text-muted-foreground">{s.detail}</div>
+            <div className="mt-0.5 text-xs text-muted-foreground leading-relaxed">{s.detail}</div>
           </div>
         </div>
         {s.progress !== undefined && (

@@ -1,20 +1,21 @@
 "use client";
 
 import { useState } from "react";
-import { ArrowUpRight, ArrowDownLeft, ArrowRightLeft, Repeat } from "lucide-react";
+import { ArrowUpRight, ArrowDownLeft, ArrowRightLeft, Sparkles } from "lucide-react";
 import { type WalletEntry, uid } from "@/lib/storage";
 import type { CashAccount } from "@/lib/cashAccounts";
 import type { CurrencyRate } from "@/lib/fx";
 import { MoneyForm, ConvertForm, TransferForm } from "@/components/WalletForms";
 import { Sheet } from "@/components/ui/sheet";
+import { cn } from "@/lib/utils";
 
-type Action = "expense" | "income" | "transfer" | "convert";
+type Action = "evaluator" | "expense" | "income" | "transfer" | "convert";
 
 const ACTIONS: { key: Action; label: string; title: string; icon: React.ReactNode }[] = [
-  { key: "expense", label: "Витрата", title: "Витрата готівкою", icon: <ArrowUpRight className="size-5" /> },
+  { key: "evaluator", label: "Чи купити?", title: "Чи можу я це купити?", icon: <Sparkles className="size-5" /> },
+  { key: "expense", label: "Готівка", title: "Витрата готівкою", icon: <ArrowUpRight className="size-5" /> },
   { key: "income", label: "Дохід", title: "Дохід готівкою", icon: <ArrowDownLeft className="size-5" /> },
-  { key: "transfer", label: "Переказ", title: "Переказ між рахунками", icon: <ArrowRightLeft className="size-5" /> },
-  { key: "convert", label: "Обмін", title: "Обмін валюти", icon: <Repeat className="size-5" /> },
+  { key: "transfer", label: "Переказ", title: "Переказ / Обмін", icon: <ArrowRightLeft className="size-5" /> },
 ];
 
 export function HomeActions({
@@ -24,6 +25,7 @@ export function HomeActions({
   rates,
   lastUsedAccountId,
   onAccountUsed,
+  onOpenEvaluator,
 }: {
   wallet: WalletEntry[];
   onChange: (list: WalletEntry[]) => void;
@@ -31,9 +33,10 @@ export function HomeActions({
   rates: CurrencyRate[];
   lastUsedAccountId: string;
   onAccountUsed: (id: string) => void;
+  onOpenEvaluator?: () => void;
 }) {
   const today = new Date().toISOString().slice(0, 10);
-  const [open, setOpen] = useState<Action | null>(null);
+  const [open, setOpen] = useState<Exclude<Action, "evaluator"> | null>(null);
   const current = ACTIONS.find((a) => a.key === open);
 
   const add = (entry: WalletEntry, accountId: string) => {
@@ -48,10 +51,23 @@ export function HomeActions({
         {ACTIONS.map((a) => (
           <button
             key={a.key}
-            onClick={() => setOpen(a.key)}
+            onClick={() => {
+              if (a.key === "evaluator") {
+                onOpenEvaluator?.();
+              } else {
+                setOpen(a.key);
+              }
+            }}
             className="group flex flex-col items-center gap-2 text-[13px] font-medium text-foreground/80"
           >
-            <span className="flex size-14 items-center justify-center rounded-full bg-secondary transition-[transform,background-color] duration-150 group-hover:bg-accent group-active:scale-95">
+            <span
+              className={cn(
+                "flex size-14 items-center justify-center rounded-full transition-[transform,background-color] duration-150 group-active:scale-95",
+                a.key === "evaluator"
+                  ? "bg-primary/10 text-primary group-hover:bg-primary/20"
+                  : "bg-secondary group-hover:bg-accent"
+              )}
+            >
               {a.icon}
             </span>
             {a.label}

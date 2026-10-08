@@ -107,4 +107,12 @@ describe("commitmentInput.parsePatch", () => {
   it("некоректну періодичність у патчі відхиляє", () => {
     expect(parsePatch({ cadence: "yearly" }, "monthly")).toEqual({ ok: false, error: "Некоректна періодичність" });
   });
+
+  it("джерело платежу (source) валідується", () => {
+    expect(parseCreate({ ...validBody, source: "cash" })).toMatchObject({ ok: true, value: { source: "cash" } });
+    expect(parseCreate(validBody)).toMatchObject({ ok: true, value: { source: "card" } });
+    expect(parsePatch({ source: "cash" }, "monthly")).toEqual({ ok: true, value: { source: "cash" } });
+    expect(parsePatch({ source: "card" }, "monthly")).toEqual({ ok: true, value: { source: "card" } });
+    expect(parsePatch({ source: "crypto" }, "monthly")).toEqual({ ok: false, error: "Некоректне джерело платежу" });
+  });
 });

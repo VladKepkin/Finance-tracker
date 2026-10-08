@@ -2,11 +2,12 @@ import { NextResponse } from "next/server";
 import { getSession } from "@/lib/session";
 import { db } from "@/lib/db";
 import { buildMetricsPayload } from "@/lib/metricsPayload";
+import { withTelemetry } from "@/lib/telemetry";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
-export async function GET(req: Request) {
+export const GET = withTelemetry("/api/metrics", async function GET(req: Request) {
   const session = await getSession();
   if (!session) return NextResponse.json({ error: "Не авторизовано" }, { status: 401 });
 
@@ -25,4 +26,4 @@ export async function GET(req: Request) {
       jarTitles.length > 0 ? jarTitles : null
     )
   );
-}
+});

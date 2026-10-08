@@ -25,6 +25,8 @@ export function Money({
   onCashAccountsChange,
   lastUsedAccountId,
   onAccountUsed,
+  txNotes,
+  onSaveNote,
 }: {
   statement: MonoStatementItem[];
   accountCurrency: number;
@@ -42,31 +44,49 @@ export function Money({
   onCashAccountsChange: (list: CashAccount[]) => void;
   lastUsedAccountId: string;
   onAccountUsed: (id: string) => void;
+  txNotes?: Record<string, string>;
+  onSaveNote?: (id: string, note: string) => void;
 }) {
+  const accountName = account
+    ? account.maskedPan?.[0]
+      ? `••${account.maskedPan[0].slice(-4)}`
+      : "Картка Monobank"
+    : "Монобанк";
+
   return (
-    <div className="space-y-3">
-      <Expenses
-        statement={statement}
-        accountCurrency={accountCurrency}
-        fakeIds={fakeIds}
-        onToggleFake={onToggleFake}
-        ratings={ratings}
-        onRate={onRate}
-        jarTitles={jarTitles}
-      />
-      <Disclosure title="Готівка: баланси, запис і історія" defaultOpen bare>
-        <WalletTab
+    <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
+      <div className="lg:col-span-7 xl:col-span-8 space-y-4">
+        <Expenses
+          statement={statement}
+          accountCurrency={accountCurrency}
+          accountName={accountName}
+          fakeIds={fakeIds}
+          onToggleFake={onToggleFake}
+          ratings={ratings}
+          onRate={onRate}
+          jarTitles={jarTitles}
           wallet={wallet}
-          onChange={onWalletChange}
-          account={account}
-          rates={rates}
-          base={base}
-          accounts={cashAccounts}
-          onAccountsChange={onCashAccountsChange}
-          lastUsedAccountId={lastUsedAccountId}
-          onAccountUsed={onAccountUsed}
+          cashAccounts={cashAccounts}
+          onDeleteCashEntry={(id) => onWalletChange(wallet.filter((w) => w.id !== id))}
+          txNotes={txNotes}
+          onSaveNote={onSaveNote}
         />
-      </Disclosure>
+      </div>
+      <div className="lg:col-span-5 xl:col-span-4 sticky top-6 space-y-4">
+        <Disclosure title="Готівка: баланси, запис і рахунки" defaultOpen bare>
+          <WalletTab
+            wallet={wallet}
+            onChange={onWalletChange}
+            account={account}
+            rates={rates}
+            base={base}
+            accounts={cashAccounts}
+            onAccountsChange={onCashAccountsChange}
+            lastUsedAccountId={lastUsedAccountId}
+            onAccountUsed={onAccountUsed}
+          />
+        </Disclosure>
+      </div>
     </div>
   );
 }

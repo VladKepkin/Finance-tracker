@@ -2,6 +2,7 @@ import Database from "better-sqlite3";
 import { scryptSync, randomBytes, timingSafeEqual } from "crypto";
 import { mkdirSync } from "fs";
 import { dirname } from "path";
+import { recordDbQuery } from "./telemetry";
 
 const DB_PATH = process.env.DATABASE_PATH || "./data/money.db";
 
@@ -15,7 +16,7 @@ export interface UserRow {
   created_at: number;
 }
 
-function hashPassword(password: string, salt: Buffer = randomBytes(16)): string {
+export function hashPassword(password: string, salt: Buffer = randomBytes(16)): string {
   const hash = scryptSync(password, salt, 64);
   return `${salt.toString("hex")}:${hash.toString("hex")}`;
 }
@@ -98,7 +99,8 @@ export function createSchema(database: DB): void {
       anchor_day INTEGER NOT NULL,
       matcher    TEXT,
       active     INTEGER NOT NULL DEFAULT 1,
-      created_at INTEGER NOT NULL
+      created_at INTEGER NOT NULL,
+      source     TEXT NOT NULL DEFAULT 'card'
     );
     CREATE INDEX IF NOT EXISTS idx_commit_user ON commitments(user_id, active);
     CREATE TABLE IF NOT EXISTS ratings (
@@ -118,12 +120,104 @@ export function createSchema(database: DB): void {
       created_at INTEGER NOT NULL
     );
     CREATE INDEX IF NOT EXISTS idx_salary_user ON salaries(user_id, paid_on);
+
+    CREATE TABLE IF NOT EXISTS groups (
+      id         INTEGER PRIMARY KEY AUTOINCREMENT,
+      name       TEXT NOT NULL,
+      created_at INTEGER NOT NULL
+    );
+    CREATE TABLE IF NOT EXISTS group_members (
+      group_id   INTEGER NOT NULL,
+      user_id    INTEGER NOT NULL,
+      role       TEXT NOT NULL DEFAULT 'member',
+      joined_at  INTEGER NOT NULL,
+      PRIMARY KEY (group_id, user_id)
+    );
+    CREATE INDEX IF NOT EXISTS idx_group_members_user ON group_members(user_id);
+
+    CREATE TABLE IF NOT EXISTS shared_accounts (
+      account_id    TEXT NOT NULL,
+      owner_user_id INTEGER NOT NULL,
+      group_id      INTEGER NOT NULL,
+      created_at    INTEGER NOT NULL,
+      PRIMARY KEY (account_id, group_id)
+    );
+    CREATE INDEX IF NOT EXISTS idx_shared_accounts_group ON shared_accounts(group_id);
+    CREATE INDEX IF NOT EXISTS idx_shared_accounts_owner ON shared_accounts(owner_user_id);
+
+    CREATE TABLE IF NOT EXISTS group_invites (
+      code       TEXT PRIMARY KEY,
+      group_id   INTEGER NOT NULL,
+      created_by INTEGER NOT NULL,
+      expires_at INTEGER NOT NULL
+    );
   `);
+
+  try {
+    database.exec("ALTER TABLE commitments ADD COLUMN source TEXT NOT NULL DEFAULT 'card'");
+  } catch {}
+}
+
+export function instrumentDb(database: DB): DB {
+  const origPrepare = database.prepare.bind(database);
+  const origExec = database.exec.bind(database);
+
+  (database as unknown as { exec: (source: string) => DB }).exec = function (source: string) {
+    const start = performance.now();
+    try {
+      return origExec(source);
+    } finally {
+      recordDbQuery(performance.now() - start);
+    }
+  };
+
+  (database as unknown as { prepare: (source: string) => Database.Statement }).prepare = function (
+    source: string
+  ) {
+    const stmt = origPrepare(source);
+    const origAll = stmt.all.bind(stmt);
+    const origGet = stmt.get.bind(stmt);
+    const origRun = stmt.run.bind(stmt);
+
+    const target = stmt as unknown as Record<string, (...args: unknown[]) => unknown>;
+
+    target.all = function (...args: unknown[]) {
+      const start = performance.now();
+      try {
+        return (origAll as (...a: unknown[]) => unknown)(...args);
+      } finally {
+        recordDbQuery(performance.now() - start);
+      }
+    };
+
+    target.get = function (...args: unknown[]) {
+      const start = performance.now();
+      try {
+        return (origGet as (...a: unknown[]) => unknown)(...args);
+      } finally {
+        recordDbQuery(performance.now() - start);
+      }
+    };
+
+    target.run = function (...args: unknown[]) {
+      const start = performance.now();
+      try {
+        return (origRun as (...a: unknown[]) => Database.RunResult)(...args);
+      } finally {
+        recordDbQuery(performance.now() - start);
+      }
+    };
+
+    return stmt;
+  };
+
+  return database;
 }
 
 function init(): DB {
   mkdirSync(dirname(DB_PATH), { recursive: true });
   const database = new Database(DB_PATH);
+  instrumentDb(database);
   database.pragma("journal_mode = WAL");
   createSchema(database);
   seedSingleUser(database);
@@ -152,6 +246,31 @@ function seedSingleUser(database: DB): void {
 
 export function db(): DB {
   return (g.__moneyDb ??= init());
+}
+
+export function createUser(username: string, password: string): UserRow {
+  const password_hash = hashPassword(password);
+  const now = Date.now();
+  const res = db()
+    .prepare("INSERT INTO users (username, password_hash, created_at) VALUES (?, ?, ?)")
+    .run(username, password_hash, now);
+  return {
+    id: Number(res.lastInsertRowid),
+    username,
+    password_hash,
+    mono_token: null,
+    created_at: now,
+  };
+}
+
+export function getUserById(id: number): UserRow | undefined {
+  return db().prepare("SELECT * FROM users WHERE id = ?").get(id) as UserRow | undefined;
+}
+
+export function getAllUsersWithToken(database: DB = db()): UserRow[] {
+  return database
+    .prepare("SELECT * FROM users WHERE mono_token IS NOT NULL")
+    .all() as UserRow[];
 }
 
 export function getUserByUsername(username: string): UserRow | undefined {
@@ -183,6 +302,7 @@ const ALLOWED_KEYS = new Set([
   "savingsPlan",
   "workSchedule",
   "cashAccounts",
+  "txNotes",
 ]);
 
 export function isAllowedKey(key: string): boolean {

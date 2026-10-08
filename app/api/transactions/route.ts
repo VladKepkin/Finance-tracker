@@ -2,13 +2,15 @@ import { NextResponse } from "next/server";
 import { getSession } from "@/lib/session";
 import { db } from "@/lib/db";
 import { queryPage } from "@/lib/repo/transactions";
+import { getAccessibleAccountIds } from "@/lib/repo/groups";
+import { withTelemetry } from "@/lib/telemetry";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
 const MAX_LIMIT = 500;
 
-export async function GET(req: Request) {
+export const GET = withTelemetry("/api/transactions", async function GET(req: Request) {
   const session = await getSession();
   if (!session) return NextResponse.json({ error: "Не авторизовано" }, { status: 401 });
 
@@ -21,6 +23,9 @@ export async function GET(req: Request) {
   const limit = Math.min(MAX_LIMIT, Math.max(1, Number(searchParams.get("limit")) || MAX_LIMIT));
   const offset = Math.max(0, Number(searchParams.get("offset")) || 0);
   const account = searchParams.get("account") ?? undefined;
+  const scope = (searchParams.get("scope") as "all" | "personal" | "family") ?? "all";
+
+  const accessibleAccountIds = getAccessibleAccountIds(db(), session.userId);
 
   const items = queryPage(db(), session.userId, {
     accountId: account,
@@ -28,6 +33,8 @@ export async function GET(req: Request) {
     toTime: to,
     limit,
     offset,
+    accessibleAccountIds,
+    scope,
   });
   return NextResponse.json({ items });
-}
+});

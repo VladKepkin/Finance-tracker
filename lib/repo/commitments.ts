@@ -12,6 +12,7 @@ export interface CommitmentRow {
   matcher: string | null;
   active: number;
   created_at: number;
+  source: "card" | "cash";
 }
 
 export function listActive(database: DB, userId: number): CommitmentRow[] {
@@ -30,15 +31,17 @@ export function insert(
     cadence: Cadence;
     anchorDay: number;
     matcher?: string | null;
+    source?: "card" | "cash";
   },
   nowSeconds: number
 ): number {
+  const source = c.source === "cash" ? "cash" : "card";
   const info = database
     .prepare(
-      `INSERT INTO commitments (user_id, name, amount, currency, cadence, anchor_day, matcher, active, created_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?, 1, ?)`
+      `INSERT INTO commitments (user_id, name, amount, currency, cadence, anchor_day, matcher, active, created_at, source)
+       VALUES (?, ?, ?, ?, ?, ?, ?, 1, ?, ?)`
     )
-    .run(userId, c.name, c.amount, c.currency, c.cadence, c.anchorDay, c.matcher ?? null, nowSeconds);
+    .run(userId, c.name, c.amount, c.currency, c.cadence, c.anchorDay, c.matcher ?? null, nowSeconds, source);
   return Number(info.lastInsertRowid);
 }
 
@@ -53,7 +56,7 @@ export function update(
   database: DB,
   userId: number,
   id: number,
-  patch: { name?: string; amount?: number; cadence?: Cadence; anchorDay?: number }
+  patch: { name?: string; amount?: number; cadence?: Cadence; anchorDay?: number; source?: "card" | "cash" }
 ): boolean {
   const sets: string[] = [];
   const params: (string | number)[] = [];
@@ -72,6 +75,10 @@ export function update(
   if (patch.anchorDay !== undefined) {
     sets.push("anchor_day = ?");
     params.push(patch.anchorDay);
+  }
+  if (patch.source !== undefined) {
+    sets.push("source = ?");
+    params.push(patch.source);
   }
   if (sets.length === 0) return false;
   params.push(id, userId);

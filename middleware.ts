@@ -12,6 +12,27 @@ export async function middleware(req: NextRequest) {
 
   if (!session) {
     if (isPublic) return NextResponse.next();
+
+    const isTelemetryPath = pathname === "/api/telemetry" || pathname === "/api/metrics/prometheus";
+    if (isTelemetryPath) {
+      const secret = process.env.METRICS_TOKEN || process.env.TELEMETRY_TOKEN;
+      const authHeader = req.headers.get("authorization");
+      const bearer = authHeader?.startsWith("Bearer ") ? authHeader.slice(7) : null;
+      const headerToken = req.headers.get("x-metrics-token") || bearer;
+      const queryToken = req.nextUrl.searchParams.get("token");
+
+      if (secret && (headerToken === secret || queryToken === secret)) {
+        return NextResponse.next();
+      }
+
+      const isDev = process.env.NODE_ENV !== "production";
+      const host = req.headers.get("host") || "";
+      const isLocal = host.startsWith("localhost") || host.startsWith("127.0.0.1");
+      if (!secret && (isDev || isLocal)) {
+        return NextResponse.next();
+      }
+    }
+
     if (pathname.startsWith("/api/")) {
       return NextResponse.json({ error: "Не авторизовано" }, { status: 401 });
     }

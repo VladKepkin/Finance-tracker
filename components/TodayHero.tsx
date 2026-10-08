@@ -65,9 +65,15 @@ export function TodayHero({
           ? "Сьогодні"
           : "Витрачено сьогодні";
 
+  const formatSalaryDate = (unixSeconds: number) =>
+    new Date(unixSeconds * 1000).toLocaleDateString("uk-UA", {
+      day: "numeric",
+      month: "long",
+    });
+
   const incomeLine =
     state.kind === "within" || state.kind === "over"
-      ? `${state.daysToIncome} ${pluralUk(state.daysToIncome, "день", "дні", "днів")} до зарплати`
+      ? `Зарплата ${formatSalaryDate(state.periodEnd)}`
       : null;
 
   return (
@@ -82,14 +88,19 @@ export function TodayHero({
     >
       <div aria-hidden className={cn("hero-aurora -z-10", over && "hero-aurora-over")} />
       <div className="flex items-center justify-between">
-        <span className="text-[15px] font-medium">{label}</span>
+        <div className="flex items-center gap-2">
+          <span className="text-[15px] font-medium text-foreground">{label}</span>
+          <span className="inline-flex items-center gap-0.5 rounded-full bg-secondary/80 px-2 py-0.5 text-[11px] font-medium text-muted-foreground transition-colors hover:text-foreground">
+            Деталі <ChevronRight className="size-3" />
+          </span>
+        </div>
         <button
           onClick={(e) => {
             e.stopPropagation();
             onToggleMasked();
           }}
           aria-label={masked ? "Показати суми" : "Приховати суми"}
-          className="-mr-1 flex size-9 items-center justify-center rounded-full text-foreground/60 transition-colors hover:bg-white/60"
+          className="-mr-1 flex size-9 items-center justify-center rounded-full text-foreground/60 transition-colors hover:bg-secondary"
         >
           {masked ? <EyeOff className="size-[18px]" /> : <Eye className="size-[18px]" />}
         </button>
@@ -117,9 +128,12 @@ export function TodayHero({
           <ProgressBar ratio={state.kind === "within" ? state.ratio : null} over={over} />
           <div className="flex items-center justify-between gap-2 text-[13px] text-muted-foreground">
             <span className="whitespace-nowrap tabular-nums">Витрачено {money(state.spent)}</span>
-            <span className="flex items-center gap-0.5 whitespace-nowrap" title={formatDate(state.periodEnd)}>
+            <span
+              className="flex items-center gap-0.5 whitespace-nowrap text-foreground/80 font-medium"
+              title={`Зарплата ${formatSalaryDate(state.periodEnd)} (${state.daysToIncome} ${pluralUk(state.daysToIncome, "день", "дні", "днів")})`}
+            >
               {incomeLine}
-              <ChevronRight className="size-3.5 shrink-0" />
+              <ChevronRight className="size-3.5 shrink-0 opacity-70" />
             </span>
           </div>
         </div>
@@ -134,16 +148,19 @@ export function TodayHero({
 
       {state.kind === "spentOnly" && (
         <div className="mt-4 space-y-3">
-          <p className="text-[13px] leading-snug text-muted-foreground">{state.reason}</p>
+          <p className="text-[13px] leading-snug text-muted-foreground">
+            {state.reason || "Налаштуй день зарплати в Меню, щоб побачити свій безпечний ліміт."}
+          </p>
           {state.action !== null && (
             <button
               onClick={(e) => {
                 e.stopPropagation();
                 onSetup(state.action as "salary" | "schedule");
               }}
-              className="rounded-full bg-primary px-4 py-2 text-sm font-medium text-primary-foreground transition-transform active:scale-[0.97]"
+              className="inline-flex items-center gap-1.5 rounded-full bg-primary px-4 py-2 text-xs font-semibold text-primary-foreground shadow-sm transition-transform active:scale-[0.97]"
             >
-              {state.action === "salary" ? "Додати зарплату" : "Вказати дні зарплати"}
+              {state.action === "salary" ? "Вказати суму зарплати" : "Вказати день зарплати"}
+              <ChevronRight className="size-3.5" />
             </button>
           )}
         </div>

@@ -81,13 +81,36 @@ export function upsertMany(
 export function timeBounds(
   database: DB,
   userId: number,
-  accountId?: string
+  accountId?: string,
+  accessibleAccountIds: string[] = []
 ): { minTime: number | null; maxTime: number | null; samples: number } {
-  const sql = `SELECT MIN(time) AS minTime, MAX(time) AS maxTime, COUNT(*) AS samples FROM transactions WHERE user_id = ?${
-    accountId != null ? " AND account_id = ?" : ""
-  }`;
-  const params: (string | number)[] = accountId != null ? [userId, accountId] : [userId];
-  const row = database.prepare(sql).get(...params) as {
+  if (accountId != null) {
+    const isShared = accessibleAccountIds.includes(accountId);
+    const sql = isShared
+      ? `SELECT MIN(time) AS minTime, MAX(time) AS maxTime, COUNT(*) AS samples FROM transactions WHERE account_id = ?`
+      : `SELECT MIN(time) AS minTime, MAX(time) AS maxTime, COUNT(*) AS samples FROM transactions WHERE user_id = ? AND account_id = ?`;
+    const params = isShared ? [accountId] : [userId, accountId];
+    const row = database.prepare(sql).get(...params) as {
+      minTime: number | null;
+      maxTime: number | null;
+      samples: number;
+    };
+    return { minTime: row.minTime, maxTime: row.maxTime, samples: row.samples };
+  }
+
+  if (accessibleAccountIds.length === 0) {
+    const sql = `SELECT MIN(time) AS minTime, MAX(time) AS maxTime, COUNT(*) AS samples FROM transactions WHERE user_id = ?`;
+    const row = database.prepare(sql).get(userId) as {
+      minTime: number | null;
+      maxTime: number | null;
+      samples: number;
+    };
+    return { minTime: row.minTime, maxTime: row.maxTime, samples: row.samples };
+  }
+
+  const placeholders = accessibleAccountIds.map(() => "?").join(",");
+  const sql = `SELECT MIN(time) AS minTime, MAX(time) AS maxTime, COUNT(*) AS samples FROM transactions WHERE user_id = ? OR account_id IN (${placeholders})`;
+  const row = database.prepare(sql).get(userId, ...accessibleAccountIds) as {
     minTime: number | null;
     maxTime: number | null;
     samples: number;
@@ -95,26 +118,87 @@ export function timeBounds(
   return { minTime: row.minTime, maxTime: row.maxTime, samples: row.samples };
 }
 
-export function queryRange(database: DB, userId: number, fromTime: number, toTime: number): TxRow[] {
-  return database
-    .prepare(
-      "SELECT * FROM transactions WHERE user_id = ? AND time >= ? AND time <= ? ORDER BY time ASC"
-    )
-    .all(userId, fromTime, toTime) as TxRow[];
+export function queryRange(
+  database: DB,
+  userId: number,
+  fromTime: number,
+  toTime: number,
+  accessibleAccountIds: string[] = []
+): TxRow[] {
+  if (accessibleAccountIds.length === 0) {
+    return database
+      .prepare(
+        "SELECT * FROM transactions WHERE user_id = ? AND time >= ? AND time <= ? ORDER BY time ASC"
+      )
+      .all(userId, fromTime, toTime) as TxRow[];
+  }
+  const placeholders = accessibleAccountIds.map(() => "?").join(",");
+  const sql = `SELECT * FROM transactions
+    WHERE (user_id = ? OR account_id IN (${placeholders}))
+      AND time >= ? AND time <= ?
+    ORDER BY time ASC`;
+  return database.prepare(sql).all(userId, ...accessibleAccountIds, fromTime, toTime) as TxRow[];
 }
 
 export function queryPage(
   database: DB,
   userId: number,
-  opts: { accountId?: string; fromTime: number; toTime: number; limit: number; offset: number }
+  opts: {
+    accountId?: string;
+    fromTime: number;
+    toTime: number;
+    limit: number;
+    offset: number;
+    accessibleAccountIds?: string[];
+    scope?: "all" | "personal" | "family";
+  }
 ): TxRow[] {
+  const accessible = opts.accessibleAccountIds ?? [];
   const byAccount = opts.accountId != null;
+
+  if (byAccount) {
+    const isShared = accessible.includes(opts.accountId!);
+    const sql = isShared
+      ? `SELECT * FROM transactions WHERE account_id = ? AND time >= ? AND time <= ? ORDER BY time DESC LIMIT ? OFFSET ?`
+      : `SELECT * FROM transactions WHERE user_id = ? AND account_id = ? AND time >= ? AND time <= ? ORDER BY time DESC LIMIT ? OFFSET ?`;
+    const params = isShared
+      ? [opts.accountId!, opts.fromTime, opts.toTime, opts.limit, opts.offset]
+      : [userId, opts.accountId!, opts.fromTime, opts.toTime, opts.limit, opts.offset];
+    return database.prepare(sql).all(...params) as TxRow[];
+  }
+
+  if (opts.scope === "family") {
+    if (accessible.length === 0) return [];
+    const placeholders = accessible.map(() => "?").join(",");
+    const sql = `SELECT * FROM transactions WHERE account_id IN (${placeholders}) AND time >= ? AND time <= ? ORDER BY time DESC LIMIT ? OFFSET ?`;
+    return database
+      .prepare(sql)
+      .all(...accessible, opts.fromTime, opts.toTime, opts.limit, opts.offset) as TxRow[];
+  }
+
+  if (opts.scope === "personal") {
+    const sql = `SELECT * FROM transactions WHERE user_id = ? AND time >= ? AND time <= ? ORDER BY time DESC LIMIT ? OFFSET ?`;
+    return database
+      .prepare(sql)
+      .all(userId, opts.fromTime, opts.toTime, opts.limit, opts.offset) as TxRow[];
+  }
+
+  if (accessible.length === 0) {
+    const sql = `SELECT * FROM transactions
+       WHERE user_id = ? AND time >= ? AND time <= ?
+       ORDER BY time DESC
+       LIMIT ? OFFSET ?`;
+    return database
+      .prepare(sql)
+      .all(userId, opts.fromTime, opts.toTime, opts.limit, opts.offset) as TxRow[];
+  }
+
+  const placeholders = accessible.map(() => "?").join(",");
   const sql = `SELECT * FROM transactions
-     WHERE user_id = ? AND time >= ? AND time <= ?${byAccount ? " AND account_id = ?" : ""}
+     WHERE (user_id = ? OR account_id IN (${placeholders})) AND time >= ? AND time <= ?
      ORDER BY time DESC
      LIMIT ? OFFSET ?`;
-  const params: (string | number)[] = [userId, opts.fromTime, opts.toTime];
-  if (byAccount) params.push(opts.accountId!);
-  params.push(opts.limit, opts.offset);
-  return database.prepare(sql).all(...params) as TxRow[];
+  return database
+    .prepare(sql)
+    .all(userId, ...accessible, opts.fromTime, opts.toTime, opts.limit, opts.offset) as TxRow[];
 }

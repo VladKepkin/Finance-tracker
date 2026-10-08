@@ -75,15 +75,15 @@ export function AccountsStrip({
   return (
     <section className="space-y-3">
       <h2 className="px-1 text-[17px] font-semibold">Мої рахунки</h2>
-      <div className="no-scrollbar -mx-4 flex snap-x snap-mandatory gap-3 overflow-x-auto px-4 pb-2">
+      <div className="no-scrollbar -mx-4 flex snap-x snap-mandatory gap-3 overflow-x-auto px-4 pb-2 md:mx-0 md:px-0 md:grid md:grid-cols-2 lg:grid-cols-3 md:gap-3 md:overflow-visible">
         {visibleMono.map((a) => {
           const selected = a.id === selectedMonoId;
           return (
             <button
               key={a.id}
-              onClick={() => (selected ? onOpenCardOperations() : onSelectMono(a.id))}
+              onClick={() => onSelectMono(a.id)}
               className={cn(
-                "soft-shadow flex min-w-[158px] shrink-0 snap-start flex-col gap-4 rounded-3xl border bg-card p-4 text-left transition-transform active:scale-[0.98]",
+                "soft-shadow flex min-w-[158px] md:min-w-0 shrink-0 snap-start flex-col gap-4 rounded-3xl border bg-card p-4 text-left transition-transform active:scale-[0.98]",
                 selected && visibleMono.length > 1 ? "border-foreground/70" : "border-transparent"
               )}
             >
@@ -92,6 +92,11 @@ export function AccountsStrip({
                   <CreditCard className="size-4" />
                 </span>
                 {ACCOUNT_TYPE_LABEL[a.type] ?? a.type}
+                {a.isShared && (
+                  <span className="rounded-full bg-primary/15 px-1.5 py-0.5 text-[10px] text-primary font-medium">
+                    Сім&apos;я
+                  </span>
+                )}
               </span>
               <span className="font-display text-lg font-semibold tabular-nums">
                 {money(a.balance, a.currencyCode)}
@@ -110,7 +115,7 @@ export function AccountsStrip({
             <button
               key={acc.id}
               onClick={() => setOpenId(acc.id)}
-              className="soft-shadow flex min-w-[158px] shrink-0 snap-start flex-col gap-4 rounded-3xl border border-transparent bg-card p-4 text-left transition-transform active:scale-[0.98]"
+              className="soft-shadow flex min-w-[158px] md:min-w-0 shrink-0 snap-start flex-col gap-4 rounded-3xl border border-transparent bg-card p-4 text-left transition-transform active:scale-[0.98]"
             >
               <span className="flex items-center gap-2 text-sm font-medium">
                 <span className="flex size-8 items-center justify-center rounded-full bg-secondary">
@@ -135,7 +140,7 @@ export function AccountsStrip({
         <button
           onClick={() => setAdding(true)}
           aria-label="Новий рахунок"
-          className="flex w-16 shrink-0 snap-start items-center justify-center rounded-3xl border-2 border-dashed border-foreground/15 text-muted-foreground transition-colors hover:border-foreground/30 hover:text-foreground"
+          className="flex w-16 md:w-full md:min-h-[110px] shrink-0 snap-start items-center justify-center rounded-3xl border-2 border-dashed border-foreground/15 text-muted-foreground transition-colors hover:border-foreground/30 hover:text-foreground"
         >
           <Plus className="size-5" />
         </button>

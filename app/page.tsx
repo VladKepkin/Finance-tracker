@@ -39,6 +39,8 @@ import {
   setSavingsPlan as persistSavingsPlan,
   getCashAccounts,
   setCashAccounts as persistCashAccounts,
+  getTxNotes,
+  setTxNotes as persistTxNotes,
   type WalletEntry,
   type WishItem,
 } from "@/lib/storage";
@@ -53,6 +55,8 @@ import { RefreshButton } from "@/components/RefreshButton";
 import { Dashboard } from "@/components/Dashboard";
 import { HomeSkeleton } from "@/components/HomeSkeleton";
 import { Button } from "@/components/ui/button";
+import { Sheet } from "@/components/ui/sheet";
+import { Evaluator } from "@/components/Evaluator";
 import dynamic from "next/dynamic";
 import { greeting, todayLongUk } from "@/lib/home/greeting";
 
@@ -117,6 +121,7 @@ export default function Home() {
   const { state, connect, refresh, changeAccount, changePeriod, disconnect } = useMono();
   const [tab, setTab] = useState<Tab>("dashboard");
   const [masked, setMasked] = useState(false);
+  const [evaluatorOpen, setEvaluatorOpen] = useState(false);
   useEffect(() => setMasked(readMasked()), []);
   const clientReady = state.client !== null;
   useEffect(() => {
@@ -159,7 +164,7 @@ export default function Home() {
   const [hydrated, setHydrated] = useState(false);
   const [metrics, setMetrics] = useState<MetricsPayload | null>(null);
   const [rawCommitments, setRawCommitments] = useState<
-    { name: string; amount: number; currency: number; cadence: Cadence; anchorDay: number }[] | null
+    { name: string; amount: number; currency: number; cadence: Cadence; anchorDay: number; source?: "card" | "cash" }[] | null
   >(null);
   const [commitmentsError, setCommitmentsError] = useState<string | null>(null);
   const [rawSalaries, setRawSalaries] = useState<{ paidOn: string; amount: number; currency: number }[] | null>(
@@ -169,6 +174,37 @@ export default function Home() {
   const [ratings, setRatingsState] = useState<Record<string, number> | null>(null);
   const [ratingsError, setRatingsError] = useState<string | null>(null);
   const [suggestionsCount, setSuggestionsCount] = useState<number | null>(null);
+  const [txNotes, setTxNotesState] = useState<Record<string, string>>({});
+
+  const [budgetScope, setBudgetScope] = useState<"personal" | "family">("personal");
+
+  const hasSharedCards = useMemo(() => {
+    return state.client?.accounts.some((a) => a.isShared) ?? false;
+  }, [state.client?.accounts]);
+
+  const displayedMonoAccounts = useMemo(() => {
+    if (!state.client) return [];
+    if (!hasSharedCards) return state.client.accounts;
+    if (budgetScope === "family") {
+      return state.client.accounts.filter((a) => a.isShared);
+    }
+    return state.client.accounts.filter((a) => !a.isShared);
+  }, [state.client, hasSharedCards, budgetScope]);
+
+  useEffect(() => {
+    if (!hasSharedCards) return;
+    if (budgetScope === "family") {
+      const firstShared = state.client?.accounts.find((a) => a.isShared);
+      if (firstShared && state.selectedAccount !== firstShared.id) {
+        changeAccount(firstShared.id);
+      }
+    } else {
+      const firstPersonal = state.client?.accounts.find((a) => !a.isShared);
+      if (firstPersonal && state.selectedAccount !== firstPersonal.id) {
+        changeAccount(firstPersonal.id);
+      }
+    }
+  }, [budgetScope, hasSharedCards, state.client?.accounts, state.selectedAccount, changeAccount]);
 
   useEffect(() => {
     void hydrateStore().then(() => {
@@ -182,6 +218,7 @@ export default function Home() {
       setBufferState(getBuffer());
       setSavingsPlanState(getSavingsPlan());
       setCashAccountsState(getCashAccounts());
+      setTxNotesState(getTxNotes());
       setHydrated(true);
     });
   }, []);
@@ -201,6 +238,16 @@ export default function Home() {
   const updateCashAccounts = (list: CashAccount[]) => {
     setCashAccountsState(list);
     persistCashAccounts(list);
+  };
+  const updateTxNotes = (txId: string, note: string) => {
+    const next = { ...txNotes };
+    if (note.trim()) {
+      next[txId] = note.trim();
+    } else {
+      delete next[txId];
+    }
+    setTxNotesState(next);
+    persistTxNotes(next);
   };
   const updateBudgets = (b: Record<string, number>) => {
     setBudgetsState(b);
@@ -306,7 +353,7 @@ export default function Home() {
         return;
       }
       const data = (await res.json()) as {
-        items: { name: string; amount: number; currency: number; cadence: Cadence; anchor_day: number }[];
+        items: { name: string; amount: number; currency: number; cadence: Cadence; anchor_day: number; source?: "card" | "cash" }[];
       };
       if (isCancelled?.()) return;
       setRawCommitments(
@@ -316,6 +363,7 @@ export default function Home() {
           currency: c.currency,
           cadence: c.cadence,
           anchorDay: c.anchor_day,
+          source: c.source ?? "card",
         }))
       );
       setCommitmentsError(null);
@@ -495,7 +543,13 @@ export default function Home() {
     for (const c of rawCommitments) {
       const amountBase = convertMinor(c.amount, c.currency, base, rates);
       if (amountBase === null) return { ok: false as const, currency: c.currency };
-      converted.push({ name: c.name, amountBase, cadence: c.cadence, anchorDay: c.anchorDay });
+      converted.push({
+        name: c.name,
+        amountBase,
+        cadence: c.cadence,
+        anchorDay: c.anchorDay,
+        source: c.source ?? "card",
+      });
     }
     return { ok: true as const, commitments: converted };
   }, [rawCommitments, base, rates]);
@@ -882,35 +936,143 @@ export default function Home() {
   const showPeriod = tab === "money" || tab === "insights";
 
   return (
-    <div className="mx-auto max-w-lg px-4 pb-32 pt-5">
-      <header className="mb-5 flex items-center justify-between gap-3">
-        {tab === "dashboard" ? (
-          <div className="min-w-0">
-            <h1 className="font-display truncate text-[26px] font-semibold leading-tight">{greeting(now.getHours())}</h1>
-            <p className="text-sm text-muted-foreground">{todayLongUk(now)}</p>
+    <div className="min-h-screen">
+      {/* Desktop Sidebar (visible on md: and above) */}
+      <aside className="hidden md:flex flex-col fixed inset-y-0 left-0 w-64 border-r bg-card/70 backdrop-blur-md p-6 z-40">
+        <div className="flex items-center gap-3 mb-8">
+          <div className="size-10 rounded-2xl bg-primary text-primary-foreground flex items-center justify-center font-bold text-lg shadow-sm">
+            ₴
           </div>
-        ) : (
-          <h1 className="font-display text-[26px] font-semibold leading-tight">{TAB_TITLE[tab]}</h1>
-        )}
-        <RefreshButton lastFetched={state.lastFetched} refreshing={state.refreshing} onClick={refresh} />
-      </header>
+          <div>
+            <h2 className="font-semibold text-sm leading-tight">Чи доживу я?</h2>
+            <p className="text-xs text-muted-foreground">Фінансовий асистент</p>
+          </div>
+        </div>
 
-      {showPeriod && (
-        <div className="mb-4 flex rounded-full bg-card p-1 soft-shadow">
-          {PERIODS.map((p) => (
+        {hasSharedCards && (
+          <div className="mb-6 flex flex-col gap-1.5 p-1.5 bg-secondary/80 rounded-2xl text-xs">
             <button
-              key={p.key}
-              onClick={() => changePeriod(p.key)}
+              type="button"
+              onClick={() => setBudgetScope("personal")}
               className={cn(
-                "flex-1 rounded-full py-2 text-xs font-medium transition-[color,background-color,transform] duration-200 active:scale-[0.97]",
-                state.period === p.key ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:text-foreground"
+                "px-3 py-2 rounded-xl text-left font-semibold flex items-center gap-2 transition-all",
+                budgetScope === "personal"
+                  ? "bg-background text-foreground shadow-xs"
+                  : "text-muted-foreground hover:text-foreground"
               )}
             >
-              {p.label}
+              <span>👤</span> Особистий бюджет
             </button>
-          ))}
+            <button
+              type="button"
+              onClick={() => setBudgetScope("family")}
+              className={cn(
+                "px-3 py-2 rounded-xl text-left font-semibold flex items-center gap-2 transition-all",
+                budgetScope === "family"
+                  ? "bg-background text-foreground shadow-xs"
+                  : "text-muted-foreground hover:text-foreground"
+              )}
+            >
+              <span>👥</span> Сімейний бюджет
+            </button>
+          </div>
+        )}
+
+        <nav className="flex-1 space-y-1.5">
+          {TABS.map((t) => {
+            const active = tab === t.key;
+            return (
+              <button
+                key={t.key}
+                onClick={() => {
+                  setTab(t.key);
+                  window.scrollTo({ top: 0, behavior: "smooth" });
+                }}
+                className={cn(
+                  "w-full flex items-center gap-3.5 px-4 py-3 rounded-2xl text-sm font-medium transition-all text-left",
+                  active
+                    ? "bg-primary text-primary-foreground shadow-sm font-semibold"
+                    : "text-muted-foreground hover:text-foreground hover:bg-secondary/60"
+                )}
+              >
+                {t.icon}
+                <span>{t.label}</span>
+              </button>
+            );
+          })}
+        </nav>
+
+        <div className="pt-4 border-t border-border/50 flex items-center justify-between text-xs text-muted-foreground">
+          <div className="truncate font-medium">{state.client?.name ?? "Користувач"}</div>
+          <RefreshButton lastFetched={state.lastFetched} refreshing={state.refreshing} onClick={refresh} />
         </div>
-      )}
+      </aside>
+
+      {/* Main Content Area */}
+      <div className="md:pl-64">
+        <div className="mx-auto max-w-lg md:max-w-5xl lg:max-w-7xl px-4 md:px-8 pb-32 md:pb-12 pt-5 md:pt-8">
+          <header className="mb-6 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+            {tab === "dashboard" ? (
+              <div className="min-w-0">
+                <h1 className="font-display truncate text-[26px] md:text-3xl font-semibold leading-tight">{greeting(now.getHours())}</h1>
+                <p className="text-sm text-muted-foreground">{todayLongUk(now)}</p>
+              </div>
+            ) : (
+              <h1 className="font-display text-[26px] md:text-3xl font-semibold leading-tight">{TAB_TITLE[tab]}</h1>
+            )}
+
+            <div className="flex items-center gap-3">
+              {showPeriod && (
+                <div className="flex rounded-full bg-card p-1 soft-shadow">
+                  {PERIODS.map((p) => (
+                    <button
+                      key={p.key}
+                      onClick={() => changePeriod(p.key)}
+                      className={cn(
+                        "px-4 py-1.5 rounded-full text-xs font-medium transition-[color,background-color,transform] duration-200 active:scale-[0.97]",
+                        state.period === p.key ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:text-foreground"
+                      )}
+                    >
+                      {p.label}
+                    </button>
+                  ))}
+                </div>
+              )}
+              <div className="md:hidden">
+                <RefreshButton lastFetched={state.lastFetched} refreshing={state.refreshing} onClick={refresh} />
+              </div>
+            </div>
+          </header>
+
+          {/* Mobile-only Budget Switcher */}
+          {hasSharedCards && (
+            <div className="md:hidden mb-5 flex rounded-2xl bg-secondary/80 p-1">
+              <button
+                type="button"
+                onClick={() => setBudgetScope("personal")}
+                className={cn(
+                  "flex-1 py-2 text-xs font-semibold rounded-xl transition-all flex items-center justify-center gap-1.5",
+                  budgetScope === "personal"
+                    ? "bg-background text-foreground shadow-xs"
+                    : "text-muted-foreground hover:text-foreground"
+                )}
+              >
+                <span>👤</span> Мій особистий бюджет
+              </button>
+              <button
+                type="button"
+                onClick={() => setBudgetScope("family")}
+                className={cn(
+                  "flex-1 py-2 text-xs font-semibold rounded-xl transition-all flex items-center justify-center gap-1.5",
+                  budgetScope === "family"
+                    ? "bg-background text-foreground shadow-xs"
+                    : "text-muted-foreground hover:text-foreground"
+                )}
+              >
+                <span>👥</span> Спільний сімейний
+              </button>
+            </div>
+          )}
 
       {state.error && (
         <div className="mb-4 rounded-3xl bg-destructive/10 p-4 text-sm text-destructive">{state.error}</div>
@@ -957,7 +1119,7 @@ export default function Home() {
             periodStatementError={periodStatementError}
             suggestionsCount={suggestionsCount}
             onOpenCommitments={() => setTab("settings")}
-            monoAccounts={state.client.accounts}
+            monoAccounts={displayedMonoAccounts}
             selectedMonoId={state.selectedAccount}
             onSelectMono={changeAccount}
             onWalletChange={updateWallet}
@@ -966,6 +1128,7 @@ export default function Home() {
             onAccountUsed={setLastUsedAccountId}
             masked={masked}
             onToggleMasked={toggleMasked}
+            onOpenEvaluator={() => setEvaluatorOpen(true)}
           />
         )}
         {tab === "money" && (
@@ -986,6 +1149,8 @@ export default function Home() {
             onCashAccountsChange={updateCashAccounts}
             lastUsedAccountId={lastUsedAccountId}
             onAccountUsed={setLastUsedAccountId}
+            txNotes={txNotes}
+            onSaveNote={updateTxNotes}
           />
         )}
         {tab === "goals" && (
@@ -1012,6 +1177,7 @@ export default function Home() {
             savingsPlan={savingsPlan}
             onSavingsPlanChange={updateSavingsPlan}
             emergency={emergency}
+            jars={state.client?.jars ?? []}
             jarsTotalBase={jarsTotalBase}
             jarsFxUnavailable={jarsFxUnavailable}
           />
@@ -1079,9 +1245,11 @@ export default function Home() {
           />
         )}
       </main>
+        </div>
+      </div>
 
       <nav
-        className="fixed inset-x-0 bottom-0 z-50 flex justify-center px-4"
+        className="md:hidden fixed inset-x-0 bottom-0 z-50 flex justify-center px-4"
         style={{ paddingBottom: "calc(env(safe-area-inset-bottom) + 0.75rem)" }}
       >
         <div className="dock-shadow relative grid w-full max-w-sm grid-cols-5 rounded-full bg-card/90 p-1.5 backdrop-blur-md">
@@ -1117,6 +1285,28 @@ export default function Home() {
           })}
         </div>
       </nav>
+
+      <Sheet open={evaluatorOpen} onClose={() => setEvaluatorOpen(false)} title="Чи можу я це купити?">
+        <div className="rounded-3xl bg-card p-4 soft-shadow">
+          <Evaluator
+            base={base}
+            rates={rates}
+            liquid={liquid}
+            commitments={commitmentsResult?.ok ? commitmentsResult.commitments : []}
+            goals={allGoals}
+            buffer={buffer}
+            schedule={schedule}
+            monthlyNet={monthlyNetBase}
+            monthlyIncome={monthlyIncomeBase}
+            hourlyRate={hourlyRateBase}
+            hourlyRateReason={hourlyRateReason}
+            nowSeconds={nowSeconds}
+            loading={allowanceLoading}
+            error={commitmentsError}
+            fxUnavailableCurrency={fxUnavailableCurrency}
+          />
+        </div>
+      </Sheet>
     </div>
   );
 }

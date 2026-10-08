@@ -69,6 +69,7 @@ export function Dashboard({
   onAccountUsed,
   masked,
   onToggleMasked,
+  onOpenEvaluator,
 }: {
   account: MonoAccount | undefined;
   wallet: WalletEntry[];
@@ -111,6 +112,7 @@ export function Dashboard({
   onAccountUsed: (id: string) => void;
   masked: boolean;
   onToggleMasked: () => void;
+  onOpenEvaluator?: () => void;
 }) {
   const [detailsOpen, setDetailsOpen] = useState(false);
   const cash = cashBalances(wallet);
@@ -165,89 +167,100 @@ export function Dashboard({
   const recentGroups = groupByDay(recent, today);
 
   return (
-    <div className="stagger space-y-5">
-      <TodayHero
-        state={hero}
-        base={base}
-        masked={masked}
-        onToggleMasked={onToggleMasked}
-        onOpen={() => setDetailsOpen(true)}
-        onSetup={onSetupIncome}
-      />
+    <div className="stagger">
+      <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
+        {/* Left column: Hero, actions, and accounts */}
+        <div className="space-y-5 lg:col-span-7 xl:col-span-7">
+          <TodayHero
+            state={hero}
+            base={base}
+            masked={masked}
+            onToggleMasked={onToggleMasked}
+            onOpen={() => setDetailsOpen(true)}
+            onSetup={onSetupIncome}
+          />
 
-      {(showSuggestionsChip || netWorth === null) && (
-        <div className="flex flex-wrap gap-2">
-          {showSuggestionsChip && (
-            <button
-              onClick={onOpenCommitments}
-              className="flex min-h-[36px] items-center gap-1.5 rounded-full bg-card px-3.5 py-1.5 text-xs font-medium soft-shadow transition-colors hover:bg-secondary active:scale-[0.97]"
-            >
-              <Repeat className="size-3.5 shrink-0" />
-              {suggestionsCount}{" "}
-              {pluralUk(suggestionsCount as number, "платіж чекає", "платежі чекають", "платежів чекають")}{" "}
-              підтвердження
-              <ChevronRight className="size-3.5 shrink-0 opacity-70" />
-            </button>
-          )}
-          {netWorth === null && (
-            <span className="flex min-h-[36px] items-center gap-1.5 rounded-full bg-warning/10 px-3.5 py-1.5 text-xs font-medium text-warning">
-              <AlertTriangle className="size-3.5 shrink-0" />
-              Немає курсу для {currencyMeta(capitalFxUnavailable ?? 0).code} — капітал не порахувати
-            </span>
-          )}
-        </div>
-      )}
-
-      <HomeActions
-        wallet={wallet}
-        onChange={onWalletChange}
-        accounts={cashAccounts}
-        rates={rates}
-        lastUsedAccountId={lastUsedAccountId}
-        onAccountUsed={onAccountUsed}
-      />
-
-      <AccountsStrip
-        monoAccounts={monoAccounts}
-        selectedMonoId={selectedMonoId}
-        onSelectMono={onSelectMono}
-        onOpenCardOperations={onViewAllOperations}
-        wallet={wallet}
-        onWalletChange={onWalletChange}
-        cashAccounts={cashAccounts}
-        onCashAccountsChange={onCashAccountsChange}
-        rates={rates}
-        base={base}
-        masked={masked}
-      />
-
-      <section className="space-y-3">
-        <div className="flex items-center justify-between px-1">
-          <h2 className="text-[17px] font-semibold">Операції</h2>
-          <button onClick={onViewAllOperations} className="text-sm font-medium text-muted-foreground hover:text-foreground">
-            Усі
-          </button>
-        </div>
-        {recentGroups.length === 0 && (
-          <p className="rounded-3xl bg-card p-6 text-center text-sm text-muted-foreground soft-shadow">
-            Поки немає операцій.
-          </p>
-        )}
-        {recentGroups.map((g) => (
-          <div key={g.day} className="space-y-2">
-            <p className="px-1 text-[13px] font-medium text-muted-foreground">{g.label}</p>
-            <div className="space-y-2">
-              {g.rows.map((row) =>
-                row.source === "card" ? (
-                  <RecentRow key={row.key} it={row.item} cc={accountCurrency} fake={fakeIds.has(row.item.id)} masked={masked} />
-                ) : (
-                  <CashRecentRow key={row.key} entry={row.entry} accounts={cashAccounts} masked={masked} />
-                )
+          {(showSuggestionsChip || netWorth === null) && (
+            <div className="flex flex-wrap gap-2">
+              {showSuggestionsChip && (
+                <button
+                  onClick={onOpenCommitments}
+                  className="flex min-h-[36px] items-center gap-1.5 rounded-full bg-card px-3.5 py-1.5 text-xs font-medium soft-shadow transition-colors hover:bg-secondary active:scale-[0.97]"
+                >
+                  <Repeat className="size-3.5 shrink-0" />
+                  {suggestionsCount}{" "}
+                  {pluralUk(suggestionsCount as number, "платіж чекає", "платежі чекають", "платежів чекають")}{" "}
+                  підтвердження
+                  <ChevronRight className="size-3.5 shrink-0 opacity-70" />
+                </button>
+              )}
+              {netWorth === null && (
+                <span className="flex min-h-[36px] items-center gap-1.5 rounded-full bg-warning/10 px-3.5 py-1.5 text-xs font-medium text-warning">
+                  <AlertTriangle className="size-3.5 shrink-0" />
+                  Немає курсу для {currencyMeta(capitalFxUnavailable ?? 0).code} — капітал не порахувати
+                </span>
               )}
             </div>
-          </div>
-        ))}
-      </section>
+          )}
+
+          <HomeActions
+            wallet={wallet}
+            onChange={onWalletChange}
+            accounts={cashAccounts}
+            rates={rates}
+            lastUsedAccountId={lastUsedAccountId}
+            onAccountUsed={onAccountUsed}
+            onOpenEvaluator={onOpenEvaluator}
+          />
+
+          <AccountsStrip
+            monoAccounts={monoAccounts}
+            selectedMonoId={selectedMonoId}
+            onSelectMono={onSelectMono}
+            onOpenCardOperations={onViewAllOperations}
+            wallet={wallet}
+            onWalletChange={onWalletChange}
+            cashAccounts={cashAccounts}
+            onCashAccountsChange={onCashAccountsChange}
+            rates={rates}
+            base={base}
+            masked={masked}
+          />
+        </div>
+
+        {/* Right column: Recent operations */}
+        <div className="space-y-4 lg:col-span-5 xl:col-span-5">
+          <section className="space-y-3 rounded-[28px] lg:bg-card/40 lg:border lg:p-5">
+            <div className="flex items-center justify-between px-1">
+              <h2 className="text-[17px] font-semibold">Операції</h2>
+              <button onClick={onViewAllOperations} className="text-sm font-medium text-muted-foreground hover:text-foreground">
+                Усі
+              </button>
+            </div>
+            {recentGroups.length === 0 && (
+              <p className="rounded-3xl bg-card p-6 text-center text-sm text-muted-foreground soft-shadow">
+                Поки немає операцій.
+              </p>
+            )}
+            <div className="space-y-3">
+              {recentGroups.map((g) => (
+                <div key={g.day} className="space-y-2">
+                  <p className="px-1 text-[13px] font-medium text-muted-foreground">{g.label}</p>
+                  <div className="space-y-2">
+                    {g.rows.map((row) =>
+                      row.source === "card" ? (
+                        <RecentRow key={row.key} it={row.item} cc={accountCurrency} fake={fakeIds.has(row.item.id)} masked={masked} />
+                      ) : (
+                        <CashRecentRow key={row.key} entry={row.entry} accounts={cashAccounts} masked={masked} />
+                      )
+                    )}
+                  </div>
+                </div>
+              ))}
+            </div>
+          </section>
+        </div>
+      </div>
 
       <Sheet open={detailsOpen} onClose={() => setDetailsOpen(false)} title="Сьогодні">
         <div className="space-y-4">
@@ -317,7 +330,11 @@ function RecentRow({ it, cc, fake, masked }: { it: MonoStatementItem; cc: number
         <div className={cn("truncate text-sm font-medium", fake && "line-through")}>
           {it.description || c.label}
         </div>
-        <div className="text-xs text-muted-foreground">{c.label}</div>
+        <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
+          <span>{c.label}</span>
+          <span className="opacity-40">•</span>
+          <span className="font-medium text-foreground/70">Картка</span>
+        </div>
       </div>
       <div className="flex shrink-0 flex-col items-end gap-0.5">
         {masked ? (
@@ -428,7 +445,11 @@ function CashRecentRow({
       </div>
       <div className="min-w-0 flex-1">
         <div className="truncate text-sm font-medium">{title}</div>
-        <div className="text-xs text-muted-foreground">{subtitle}</div>
+        <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
+          <span>{subtitle}</span>
+          <span className="opacity-40">•</span>
+          <span className="font-medium text-foreground/70">Готівка</span>
+        </div>
       </div>
       <div className="flex shrink-0 flex-col items-end gap-0.5">
         {masked ? MASKED_AMOUNT : right}

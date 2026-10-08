@@ -1,10 +1,11 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { CalendarClock, Shield } from "lucide-react";
+import { CalendarClock, Shield, Check } from "lucide-react";
 import type { IncomeSchedule } from "@/lib/metrics/schedule";
 import { currencyMeta } from "@/lib/monobank";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import {
   Select,
@@ -29,6 +30,7 @@ export function IncomeScheduleCard({
   onScheduleChange: (s: IncomeSchedule) => void;
   onBufferChange: (v: number) => void;
 }) {
+  const isSaved = schedule !== null;
   const kind = schedule?.kind ?? "monthly";
   const d1 = schedule?.kind === "semimonthly" ? schedule.days[0] : schedule?.kind === "monthly" ? schedule.day : 1;
   const d2 = schedule?.kind === "semimonthly" ? schedule.days[1] : 20;
@@ -55,9 +57,24 @@ export function IncomeScheduleCard({
   return (
     <Card>
       <CardHeader>
-        <CardTitle className="flex items-center gap-2 text-sm">
-          <CalendarClock className="size-4" /> Дохід і накопичення
-        </CardTitle>
+        <div className="flex items-center justify-between">
+          <CardTitle className="flex items-center gap-2 text-sm">
+            <CalendarClock className="size-4" /> Дохід і накопичення
+          </CardTitle>
+          {isSaved ? (
+            <span className="flex items-center gap-1 text-xs text-success font-medium">
+              <Check className="size-3.5" /> Активно
+            </span>
+          ) : (
+            <Button
+              size="sm"
+              className="h-7 text-xs bg-primary text-primary-foreground"
+              onClick={() => setKind(kind)}
+            >
+              Зберегти
+            </Button>
+          )}
+        </div>
         <p className="text-xs text-muted-foreground">
           Коли приходить дохід — без цього денний ліміт порахувати нічим.
         </p>

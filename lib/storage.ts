@@ -32,6 +32,10 @@ export interface WishItem {
   currency: number;
   url?: string;
   deadline?: string;
+  savedAmount?: number;
+  completed?: boolean;
+  completedAt?: string;
+  jarId?: string;
 }
 
 const SYNC_KEYS = [
@@ -46,6 +50,7 @@ const SYNC_KEYS = [
   "savingsPlan",
   "workSchedule",
   "cashAccounts",
+  "txNotes",
 ] as const;
 type SyncKey = (typeof SYNC_KEYS)[number];
 
@@ -99,6 +104,7 @@ const LEGACY_MAP: Record<SyncKey, string> = {
   savingsPlan: "mt.savingsPlan",
   workSchedule: "mt.workSchedule",
   cashAccounts: "mt.cashAccounts",
+  txNotes: "mt.txNotes",
 };
 
 function importLegacyLocal(server: Record<string, unknown>): void {
@@ -185,6 +191,15 @@ export const getSavingsPlan = (): SavingsPlan => {
   };
 };
 export const setSavingsPlan = (p: SavingsPlan) => set("savingsPlan", p);
+
+export const getTxNotes = (): Record<string, string> => {
+  const v = get<unknown>("txNotes", {});
+  if (v && typeof v === "object" && !Array.isArray(v)) {
+    return v as Record<string, string>;
+  }
+  return {};
+};
+export const setTxNotes = (notes: Record<string, string>) => set("txNotes", notes);
 
 export function uid(): string {
   return Math.random().toString(36).slice(2) + Date.now().toString(36);

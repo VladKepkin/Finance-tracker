@@ -1,3 +1,5 @@
+import { recordMonobankCall } from "./telemetry";
+
 export const MONOBANK_BASE = "https://api.monobank.ua";
 
 export interface MonoAccount {
@@ -10,6 +12,9 @@ export interface MonoAccount {
   cashbackType: string;
   maskedPan: string[];
   iban: string;
+  isShared?: boolean;
+  sharedOwnerId?: number;
+  groupName?: string;
 }
 
 export interface MonoJar {
@@ -62,34 +67,50 @@ export function currencyMeta(code: number) {
 }
 
 export async function monoFetch<T>(token: string, path: string): Promise<T> {
-  const res = await fetch(`${MONOBANK_BASE}${path}`, {
-    headers: { "X-Token": token },
-    cache: "no-store",
-  });
+  const start = performance.now();
+  let status = 0;
+  let isError = false;
 
-  if (res.status === 429) {
-    throw new MonoError(
-      "Перевищено ліміт запитів до Monobank. Зачекайте 60 секунд і спробуйте ще раз.",
-      429
-    );
-  }
-  if (res.status === 403) {
-    throw new MonoError("Невірний або недійсний токен Monobank.", 403);
-  }
-  if (!res.ok) {
-    let detail = "";
-    try {
-      const body = (await res.json()) as { errorDescription?: string };
-      detail = body?.errorDescription ?? "";
-    } catch {
+  try {
+    const res = await fetch(`${MONOBANK_BASE}${path}`, {
+      headers: { "X-Token": token },
+      cache: "no-store",
+    });
+    status = res.status;
+
+    if (res.status === 429) {
+      isError = true;
+      throw new MonoError(
+        "Перевищено ліміт запитів до Monobank. Зачекайте 60 секунд і спробуйте ще раз.",
+        429
+      );
     }
-    throw new MonoError(
-      `Помилка Monobank (${res.status})${detail ? `: ${detail}` : ""}`,
-      res.status
-    );
-  }
+    if (res.status === 403) {
+      isError = true;
+      throw new MonoError("Невірний або недійсний токен Monobank.", 403);
+    }
+    if (!res.ok) {
+      isError = true;
+      let detail = "";
+      try {
+        const body = (await res.json()) as { errorDescription?: string };
+        detail = body?.errorDescription ?? "";
+      } catch {
+      }
+      throw new MonoError(
+        `Помилка Monobank (${res.status})${detail ? `: ${detail}` : ""}`,
+        res.status
+      );
+    }
 
-  return (await res.json()) as T;
+    return (await res.json()) as T;
+  } catch (err) {
+    isError = true;
+    throw err;
+  } finally {
+    const durationMs = performance.now() - start;
+    recordMonobankCall(status, durationMs, isError);
+  }
 }
 
 export class MonoError extends Error {

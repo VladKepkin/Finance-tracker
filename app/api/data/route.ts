@@ -1,17 +1,18 @@
 import { NextResponse } from "next/server";
 import { getSession } from "@/lib/session";
 import { getAllKV, setKV, isAllowedKey } from "@/lib/db";
+import { withTelemetry } from "@/lib/telemetry";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
-export async function GET() {
+export const GET = withTelemetry("/api/data", async function GET() {
   const session = await getSession();
   if (!session) return NextResponse.json({ error: "Не авторизовано" }, { status: 401 });
   return NextResponse.json(getAllKV(session.userId));
-}
+});
 
-export async function PUT(req: Request) {
+export const PUT = withTelemetry("/api/data", async function PUT(req: Request) {
   const session = await getSession();
   if (!session) return NextResponse.json({ error: "Не авторизовано" }, { status: 401 });
 
@@ -29,4 +30,4 @@ export async function PUT(req: Request) {
 
   setKV(session.userId, key, body.value ?? null);
   return NextResponse.json({ ok: true });
-}
+});

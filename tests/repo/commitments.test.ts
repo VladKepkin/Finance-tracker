@@ -88,4 +88,16 @@ describe("repo/commitments", () => {
     expect(repo.getById(d, 2, id)).toBeNull();
     expect(repo.getById(d, 1, id + 999)).toBeNull();
   });
+
+  it("підтримує source: за замовчуванням 'card', зберігає 'cash' та оновлюється", () => {
+    const d = testDb();
+    const idCard = repo.insert(d, 1, netflix, NOW);
+    expect(repo.getById(d, 1, idCard)?.source).toBe("card");
+
+    const idCash = repo.insert(d, 1, { ...netflix, name: "Оренда", source: "cash" }, NOW);
+    expect(repo.getById(d, 1, idCash)?.source).toBe("cash");
+
+    expect(repo.update(d, 1, idCard, { source: "cash" })).toBe(true);
+    expect(repo.getById(d, 1, idCard)?.source).toBe("cash");
+  });
 });

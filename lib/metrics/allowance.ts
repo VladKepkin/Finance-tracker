@@ -7,6 +7,7 @@ export interface AllowanceCommitment {
   amountBase: number;
   cadence: Cadence;
   anchorDay: number;
+  source?: "card" | "cash";
 }
 
 export interface Allowance {
@@ -18,7 +19,7 @@ export interface Allowance {
   buffer: number;
   available: number;
   shortfall: boolean;
-  dueBeforeIncome: { name: string; totalBase: number }[];
+  dueBeforeIncome: { name: string; totalBase: number; source?: "card" | "cash" }[];
   goalsReserved: number;
   goalsBeforeIncome: { name: string; reservedBase: number }[];
   overdueGoals: string[];
@@ -39,14 +40,16 @@ export function computeAllowance(input: {
   const periodEnd = incomePeriodEnd(schedule, nowSeconds);
   const daysToIncome = daysUntilIncome(schedule, nowSeconds);
 
-  const dueBeforeIncome: { name: string; totalBase: number }[] = [];
+  const dueBeforeIncome: { name: string; totalBase: number; source?: "card" | "cash" }[] = [];
   let reserved = 0;
   for (const c of commitments) {
     const times = occurrencesBetween(c.cadence, c.anchorDay, nowSeconds, periodEnd);
     if (times === 0) continue;
     const sum = c.amountBase * times;
     reserved += sum;
-    dueBeforeIncome.push({ name: c.name, totalBase: sum });
+    const item: { name: string; totalBase: number; source?: "card" | "cash" } = { name: c.name, totalBase: sum };
+    if (c.source) item.source = c.source;
+    dueBeforeIncome.push(item);
   }
 
   const { reserved: goalsReserved, goalsBeforeIncome, overdueGoals, invalidGoals } = goalsReserve(
