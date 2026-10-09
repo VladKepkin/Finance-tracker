@@ -70,8 +70,12 @@ export function Dashboard({
   masked,
   onToggleMasked,
   onOpenEvaluator,
+  activeMonoAccounts,
+  excludedAccounts,
 }: {
   account: MonoAccount | undefined;
+  activeMonoAccounts?: MonoAccount[];
+  excludedAccounts?: string[];
   wallet: WalletEntry[];
   cashAccounts: CashAccount[];
   rates: CurrencyRate[];
@@ -129,12 +133,27 @@ export function Dashboard({
   }
   const cashTotalBase = cashFxUnavailable === null ? cashTotalBaseSum : null;
 
-  const cardBaseOrNull = account ? convertMinor(account.balance, account.currencyCode, base, rates) : 0;
-  const cardFxUnavailable = account && cardBaseOrNull === null ? account.currencyCode : null;
-  const cardBase = cardBaseOrNull ?? 0;
+  const { cardsTotalBase, cardFxUnavailable } = useMemo(() => {
+    const list = activeMonoAccounts ?? (account ? [account] : []);
+    let sum = 0;
+    let unavailable: number | null = null;
+    for (const a of list) {
+      const ownFunds = Math.max(0, a.balance - (a.creditLimit ?? 0));
+      const v = convertMinor(ownFunds, a.currencyCode, base, rates);
+      if (v === null) {
+        unavailable = a.currencyCode;
+        break;
+      }
+      sum += v;
+    }
+    return {
+      cardsTotalBase: unavailable === null ? sum : null,
+      cardFxUnavailable: unavailable,
+    };
+  }, [activeMonoAccounts, account, base, rates]);
 
   const capitalFxUnavailable = cashFxUnavailable ?? cardFxUnavailable;
-  const netWorth = cashTotalBase !== null && cardFxUnavailable === null ? cashTotalBase + cardBase : null;
+  const netWorth = cashTotalBase !== null && cardsTotalBase !== null ? cashTotalBase + cardsTotalBase : null;
 
   const recent = useMemo(() => {
     const cardRows: RecentEntry[] = statement.map((it) => ({
@@ -225,6 +244,7 @@ export function Dashboard({
             rates={rates}
             base={base}
             masked={masked}
+            excludedAccounts={excludedAccounts}
           />
         </div>
 

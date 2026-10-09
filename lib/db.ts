@@ -303,6 +303,7 @@ const ALLOWED_KEYS = new Set([
   "workSchedule",
   "cashAccounts",
   "txNotes",
+  "excludedAccounts",
 ]);
 
 export function isAllowedKey(key: string): boolean {

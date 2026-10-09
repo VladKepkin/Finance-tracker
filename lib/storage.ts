@@ -51,6 +51,7 @@ const SYNC_KEYS = [
   "workSchedule",
   "cashAccounts",
   "txNotes",
+  "excludedAccounts",
 ] as const;
 type SyncKey = (typeof SYNC_KEYS)[number];
 
@@ -105,6 +106,7 @@ const LEGACY_MAP: Record<SyncKey, string> = {
   workSchedule: "mt.workSchedule",
   cashAccounts: "mt.cashAccounts",
   txNotes: "mt.txNotes",
+  excludedAccounts: "mt.excludedAccounts",
 };
 
 function importLegacyLocal(server: Record<string, unknown>): void {
@@ -200,6 +202,12 @@ export const getTxNotes = (): Record<string, string> => {
   return {};
 };
 export const setTxNotes = (notes: Record<string, string>) => set("txNotes", notes);
+
+export const getExcludedAccounts = (): string[] => {
+  const v = get<unknown>("excludedAccounts", []);
+  return Array.isArray(v) ? (v.filter((x): x is string => typeof x === "string") as string[]) : [];
+};
+export const setExcludedAccounts = (ids: string[]) => set("excludedAccounts", ids);
 
 export function uid(): string {
   return Math.random().toString(36).slice(2) + Date.now().toString(36);

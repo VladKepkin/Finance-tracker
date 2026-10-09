@@ -38,6 +38,7 @@ export function AccountsStrip({
   rates,
   base,
   masked,
+  excludedAccounts = [],
 }: {
   monoAccounts: MonoAccount[];
   selectedMonoId: string;
@@ -50,6 +51,7 @@ export function AccountsStrip({
   rates: CurrencyRate[];
   base: number;
   masked: boolean;
+  excludedAccounts?: string[];
 }) {
   const [openId, setOpenId] = useState<string | null>(null);
   const [adding, setAdding] = useState(false);
@@ -78,23 +80,36 @@ export function AccountsStrip({
       <div className="no-scrollbar -mx-4 flex snap-x snap-mandatory gap-3 overflow-x-auto px-4 pb-2 md:mx-0 md:px-0 md:grid md:grid-cols-2 lg:grid-cols-3 md:gap-3 md:overflow-visible">
         {visibleMono.map((a) => {
           const selected = a.id === selectedMonoId;
+          const isExcluded = excludedAccounts.includes(a.id);
+          const isFop = a.type === "fop";
           return (
             <button
               key={a.id}
               onClick={() => onSelectMono(a.id)}
               className={cn(
                 "soft-shadow flex min-w-[158px] md:min-w-0 shrink-0 snap-start flex-col gap-4 rounded-3xl border bg-card p-4 text-left transition-transform active:scale-[0.98]",
+                isExcluded ? "opacity-70 bg-muted/20" : "",
                 selected && visibleMono.length > 1 ? "border-foreground/70" : "border-transparent"
               )}
             >
-              <span className="flex items-center gap-2 text-sm font-medium">
+              <span className="flex items-center gap-2 text-sm font-medium flex-wrap">
                 <span className="flex size-8 items-center justify-center rounded-full bg-secondary">
                   <CreditCard className="size-4" />
                 </span>
-                {ACCOUNT_TYPE_LABEL[a.type] ?? a.type}
+                <span className="truncate">{ACCOUNT_TYPE_LABEL[a.type] ?? a.type}</span>
+                {isFop && (
+                  <span className="rounded-full bg-amber-500/15 px-1.5 py-0.5 text-[10px] text-amber-700 dark:text-amber-400 font-medium border border-amber-500/20">
+                    ФОП
+                  </span>
+                )}
                 {a.isShared && (
                   <span className="rounded-full bg-primary/15 px-1.5 py-0.5 text-[10px] text-primary font-medium">
                     Сім&apos;я
+                  </span>
+                )}
+                {isExcluded && (
+                  <span className="rounded-full bg-muted px-1.5 py-0.5 text-[10px] text-muted-foreground font-medium">
+                    Виключено
                   </span>
                 )}
               </span>
@@ -104,6 +119,7 @@ export function AccountsStrip({
               <span className="flex items-center gap-1 text-xs text-muted-foreground">
                 {selected && visibleMono.length > 1 && <Check className="size-3" />}
                 {a.maskedPan?.[0] ? `•• ${a.maskedPan[0].slice(-4)}` : currencyMeta(a.currencyCode).code}
+                {isExcluded && " · не в ліміті"}
               </span>
             </button>
           );

@@ -12,6 +12,8 @@ import {
   setWorkSchedule,
   getCashAccounts,
   setCashAccounts,
+  getExcludedAccounts,
+  setExcludedAccounts,
   type WishItem,
 } from "@/lib/storage";
 import type { IncomeSchedule } from "@/lib/metrics/schedule";
@@ -224,3 +226,21 @@ describe("getCashAccounts", () => {
     expect(getCashAccounts()).toEqual([{ id: "cash", name: "Готівка" }]);
   });
 });
+
+describe("getExcludedAccounts", () => {
+  it("повертає збережений масив ідентифікаторів", () => {
+    setExcludedAccounts(["fop_123", "card_456"]);
+    expect(getExcludedAccounts()).toEqual(["fop_123", "card_456"]);
+  });
+
+  it("порожній список за замовчуванням або якщо передано порожній масив", () => {
+    setExcludedAccounts([]);
+    expect(getExcludedAccounts()).toEqual([]);
+  });
+
+  it("фільтрує нестрокові значення та сміття", () => {
+    setExcludedAccounts(["valid", 123 as unknown as string, null as unknown as string]);
+    expect(getExcludedAccounts()).toEqual(["valid"]);
+  });
+});
+

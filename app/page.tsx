@@ -41,6 +41,8 @@ import {
   setCashAccounts as persistCashAccounts,
   getTxNotes,
   setTxNotes as persistTxNotes,
+  getExcludedAccounts,
+  setExcludedAccounts as persistExcludedAccounts,
   type WalletEntry,
   type WishItem,
 } from "@/lib/storage";
@@ -179,6 +181,7 @@ export default function Home() {
   const [ratingsError, setRatingsError] = useState<string | null>(null);
   const [suggestionsCount, setSuggestionsCount] = useState<number | null>(null);
   const [txNotes, setTxNotesState] = useState<Record<string, string>>({});
+  const [excludedAccounts, setExcludedAccountsState] = useState<string[]>([]);
 
   const [budgetScope, setBudgetScope] = useState<"personal" | "family">("personal");
 
@@ -194,6 +197,31 @@ export default function Home() {
     }
     return state.client.accounts.filter((a) => !a.isShared);
   }, [state.client, hasSharedCards, budgetScope]);
+
+  const activeMonoAccounts = useMemo(() => {
+    return displayedMonoAccounts.filter((a) => !excludedAccounts.includes(a.id));
+  }, [displayedMonoAccounts, excludedAccounts]);
+
+  const toggleExcludeAccount = useCallback((id: string) => {
+    setExcludedAccountsState((prev) => {
+      const next = prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id];
+      persistExcludedAccounts(next);
+      return next;
+    });
+  }, []);
+
+  useEffect(() => {
+    if (state.client?.accounts && state.client.accounts.length > 0) {
+      const saved = getExcludedAccounts();
+      if (saved.length === 0) {
+        const fopIds = state.client.accounts.filter((a) => a.type === "fop").map((a) => a.id);
+        if (fopIds.length > 0) {
+          setExcludedAccountsState(fopIds);
+          persistExcludedAccounts(fopIds);
+        }
+      }
+    }
+  }, [state.client?.accounts]);
 
   useEffect(() => {
     if (!hasSharedCards) return;
@@ -223,6 +251,7 @@ export default function Home() {
       setSavingsPlanState(getSavingsPlan());
       setCashAccountsState(getCashAccounts());
       setTxNotesState(getTxNotes());
+      setExcludedAccountsState(getExcludedAccounts());
       setHydrated(true);
     });
   }, []);
@@ -524,19 +553,24 @@ export default function Home() {
 
   const liquidResult = useMemo(() => {
     const cash = cashBalances(wallet);
-    let cashBase = 0;
+    let totalBase = 0;
     for (const [cur, amt] of Object.entries(cash)) {
       const v = convertMinor(amt, Number(cur), base, rates);
       if (v === null) return { ok: false as const, currency: Number(cur) };
-      cashBase += v;
+      totalBase += v;
     }
-    if (account) {
-      const cardBase = convertMinor(account.balance, accountCurrency, base, rates);
-      if (cardBase === null) return { ok: false as const, currency: accountCurrency };
-      cashBase += cardBase;
+    const accountsToInclude = activeMonoAccounts.length > 0
+      ? activeMonoAccounts
+      : (account && !excludedAccounts.includes(account.id) ? [account] : []);
+
+    for (const a of accountsToInclude) {
+      const ownFunds = Math.max(0, a.balance - (a.creditLimit ?? 0));
+      const cardBase = convertMinor(ownFunds, a.currencyCode, base, rates);
+      if (cardBase === null) return { ok: false as const, currency: a.currencyCode };
+      totalBase += cardBase;
     }
-    return { ok: true as const, value: cashBase };
-  }, [wallet, account, accountCurrency, base, rates]);
+    return { ok: true as const, value: totalBase };
+  }, [wallet, activeMonoAccounts, account, excludedAccounts, base, rates]);
 
   const liquid = liquidResult.ok ? liquidResult.value : null;
   const liquidFxUnavailable = liquidResult.ok ? null : liquidResult.currency;
@@ -572,8 +606,9 @@ export default function Home() {
       if (fakeSet.has(it.id)) continue;
       if (isOwnJarTransfer(it.mcc, it.description, jarTitles)) continue;
       if (it.time < todayStart || it.time >= todayStart + 86_400) continue;
-      const v = convertMinor(Math.abs(it.amount), accountCurrency, base, rates);
-      if (v === null) return { ok: false as const, currency: accountCurrency };
+      const cur = it.currencyCode ?? accountCurrency;
+      const v = convertMinor(Math.abs(it.amount), cur, base, rates);
+      if (v === null) return { ok: false as const, currency: cur };
       total += v;
     }
     for (const e of wallet) {
@@ -1238,6 +1273,8 @@ export default function Home() {
             masked={masked}
             onToggleMasked={toggleMasked}
             onOpenEvaluator={() => setEvaluatorOpen(true)}
+            activeMonoAccounts={activeMonoAccounts}
+            excludedAccounts={excludedAccounts}
           />
         )}
         {tab === "money" && (
@@ -1351,6 +1388,8 @@ export default function Home() {
             incomeUnavailableReason={incomeUnavailableReason}
             accountCurrency={accountCurrency}
             jarTitles={jarTitles}
+            excludedAccounts={excludedAccounts}
+            onToggleExcludeAccount={toggleExcludeAccount}
           />
         )}
       </main>

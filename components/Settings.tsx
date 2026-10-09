@@ -32,6 +32,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import { Switch } from "@/components/ui/switch";
 import { cn } from "@/lib/utils";
 
 const BASE_OPTIONS = [980, 840, 978];
@@ -64,6 +65,8 @@ export function Settings({
   incomeUnavailableReason,
   accountCurrency,
   jarTitles,
+  excludedAccounts = [],
+  onToggleExcludeAccount,
 }: {
   client: MonoClientInfo;
   selectedAccount: string;
@@ -85,6 +88,8 @@ export function Settings({
   incomeUnavailableReason: string | null;
   accountCurrency: number;
   jarTitles: readonly string[] | null;
+  excludedAccounts?: string[];
+  onToggleExcludeAccount?: (id: string) => void;
 }) {
   const [confirmDisconnect, setConfirmDisconnect] = useState(false);
   const [confirmLogout, setConfirmLogout] = useState(false);
@@ -137,50 +142,76 @@ export function Settings({
                   <CreditCard className="size-4 text-primary" /> Мої рахунки
                 </CardTitle>
                 <span className="text-xs text-muted-foreground font-normal">
-                  Оберіть активний
+                  Враховувати у ліміті
                 </span>
               </div>
             </CardHeader>
-            <CardContent className="space-y-2">
+            <CardContent className="space-y-2.5">
               {client.accounts.map((a) => {
-                const active = a.id === selectedAccount;
+                const isExcluded = excludedAccounts.includes(a.id);
+                const isIncluded = !isExcluded;
+                const isFop = a.type === "fop";
+                const ownFunds = Math.max(0, a.balance - (a.creditLimit ?? 0));
                 return (
-                  <button
+                  <div
                     key={a.id}
-                    onClick={() => onSelect(a.id)}
                     className={cn(
                       "flex w-full items-center justify-between rounded-xl border p-3 text-left transition-all",
-                      active
-                        ? "border-primary bg-primary/5 shadow-xs"
-                        : "border-border/60 hover:border-primary/40 hover:bg-secondary/40"
+                      isIncluded
+                        ? "border-border/80 bg-card shadow-xs"
+                        : "border-border/40 bg-muted/30 opacity-70"
                     )}
                   >
-                    <div className="min-w-0 pr-2">
-                      <div className="flex items-center gap-2">
+                    <div className="min-w-0 pr-3">
+                      <div className="flex items-center gap-2 flex-wrap">
                         <span className="text-sm font-semibold text-foreground">
                           {ACCOUNT_TYPE_LABEL[a.type] ?? a.type}
                         </span>
+                        {isFop && (
+                          <Badge variant="secondary" className="bg-amber-500/15 text-amber-700 dark:text-amber-400 border-amber-500/20 text-[10px] px-1.5 py-0">
+                            ФОП
+                          </Badge>
+                        )}
                         <Badge variant="outline" className="text-[10px] px-1.5 py-0 font-normal">
                           {currencyMeta(a.currencyCode).code}
                         </Badge>
+                        {a.isShared && (
+                          <Badge variant="secondary" className="bg-primary/10 text-primary text-[10px] px-1.5 py-0 font-medium">
+                            Сім&apos;я
+                          </Badge>
+                        )}
                       </div>
                       <div className="text-xs text-muted-foreground truncate mt-0.5">
-                        {a.maskedPan?.[0] ?? a.iban}
+                        {a.maskedPan?.[0] ? `•• ${a.maskedPan[0].slice(-4)}` : a.iban}
+                        {a.creditLimit > 0 && (
+                          <span className="ml-1 opacity-80">
+                            · власні: {formatMoney(ownFunds, a.currencyCode)}
+                          </span>
+                        )}
                       </div>
-                    </div>
-                    <div className="flex items-center gap-2.5 shrink-0">
-                      <span className="text-sm font-bold tabular-nums">
-                        {formatMoney(a.balance, a.currencyCode)}
-                      </span>
-                      {active ? (
-                        <div className="size-5 rounded-full bg-primary text-primary-foreground flex items-center justify-center shrink-0">
-                          <Check className="size-3 stroke-[2.5]" />
+                      {isFop && isExcluded && (
+                        <div className="text-[11px] text-muted-foreground/90 mt-1 flex items-center gap-1">
+                          <span>💼 Рахунок підприємця — виключено з особистого бюджету</span>
                         </div>
-                      ) : (
-                        <div className="size-5 rounded-full border border-border/80 shrink-0" />
                       )}
                     </div>
-                  </button>
+
+                    <div className="flex items-center gap-3 shrink-0">
+                      <div className="text-right">
+                        <div className="text-sm font-bold tabular-nums">
+                          {formatMoney(a.balance, a.currencyCode)}
+                        </div>
+                        <div className="text-[11px] text-muted-foreground">
+                          {isIncluded ? "В бюджеті" : "Виключено"}
+                        </div>
+                      </div>
+                      <Switch
+                        checked={isIncluded}
+                        onCheckedChange={() => onToggleExcludeAccount?.(a.id)}
+                        aria-label={`Враховувати ${ACCOUNT_TYPE_LABEL[a.type] ?? a.type} в бюджеті`}
+                      />
+                    </div>
+                  </div>
                 );
               })}
             </CardContent>
