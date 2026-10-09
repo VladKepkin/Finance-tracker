@@ -12,6 +12,9 @@ import {
   Sparkles,
   Trash2,
   Check,
+  ArrowLeftRight,
+  Users,
+  ShoppingBag,
 } from "lucide-react";
 import { Sheet } from "@/components/ui/sheet";
 import { Button } from "@/components/ui/button";
@@ -21,6 +24,7 @@ import { formatMoney } from "@/lib/format";
 import { CATEGORIES, mccToCategory } from "@/lib/mcc";
 import { currencyMeta } from "@/lib/monobank";
 import { cn } from "@/lib/utils";
+import type { TxOverrideType } from "@/lib/storage";
 
 export interface TransactionDetailData {
   id: string;
@@ -45,6 +49,9 @@ export interface TransactionDetailData {
   note?: string;
   cashKind?: string;
   cashEntryId?: string;
+  overrideType?: TxOverrideType | null;
+  classificationKind?: "expense" | "income" | "internal_transfer" | "shared_transit" | "ignored";
+  classificationBadge?: { label: string; variant: "default" | "secondary" | "warning" | "outline" | "success" };
 }
 
 const JOY_LABELS: Record<number, string> = {
@@ -63,6 +70,7 @@ export function TransactionDetailsModal({
   onRate,
   onSaveNote,
   onDeleteCashEntry,
+  onChangeOverride,
 }: {
   item: TransactionDetailData | null;
   open: boolean;
@@ -71,6 +79,7 @@ export function TransactionDetailsModal({
   onRate?: (id: string, score: number | null) => void;
   onSaveNote?: (id: string, note: string) => void;
   onDeleteCashEntry?: (id: string) => void;
+  onChangeOverride?: (id: string, override: TxOverrideType | null) => void;
 }) {
   const [noteText, setNoteText] = useState("");
   const [noteSaved, setNoteSaved] = useState(false);
@@ -150,7 +159,11 @@ export function TransactionDetailsModal({
             </Badge>
 
             {item.isHold && <Badge variant="outline">Hold (заблоковано)</Badge>}
-            {item.isFake && <Badge variant="warning">Фейкова (не в ліміті)</Badge>}
+            {item.classificationBadge ? (
+              <Badge variant={item.classificationBadge.variant}>{item.classificationBadge.label}</Badge>
+            ) : item.isFake ? (
+              <Badge variant="warning">Фейкова (не в ліміті)</Badge>
+            ) : null}
             {item.isJarTransfer && <Badge variant="secondary">У власну банку</Badge>}
             {item.cashbackAmount && item.cashbackAmount > 0 ? (
               <Badge variant="secondary" className="text-success font-medium">
@@ -160,8 +173,105 @@ export function TransactionDetailsModal({
           </div>
         </div>
 
-        {/* Швидка дія: Фейковість (виключити з бюджету) */}
-        {onToggleFake && item.sourceType === "mono" && (
+        {/* Швидка дія: Керування статусом транзакції */}
+        {onChangeOverride && item.sourceType === "mono" ? (
+          <div className="rounded-2xl border bg-card p-3.5 space-y-3">
+            <div className="flex items-center justify-between">
+              <span className="text-xs font-semibold uppercase tracking-wider text-muted-foreground flex items-center gap-1.5">
+                <ArrowLeftRight className="size-3.5 text-primary" /> Статус у бюджеті
+              </span>
+              {item.classificationBadge && (
+                <span className="text-xs font-medium text-muted-foreground">
+                  Зараз: {item.classificationBadge.label}
+                </span>
+              )}
+            </div>
+
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+              <button
+                type="button"
+                onClick={() => {
+                  const target = item.overrideType === "expense" ? null : "expense";
+                  onChangeOverride(item.id, target);
+                }}
+                className={cn(
+                  "flex flex-col items-center justify-center gap-1 rounded-xl p-2.5 text-xs font-medium transition-all text-center border",
+                  item.overrideType === "expense" || (!item.overrideType && item.classificationKind === "expense")
+                    ? "bg-primary text-primary-foreground border-primary shadow-xs"
+                    : "bg-secondary/60 hover:bg-secondary text-muted-foreground border-transparent"
+                )}
+              >
+                <ShoppingBag className="size-4" />
+                <span>Витрата</span>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => {
+                  const target = item.overrideType === "internal_transfer" ? null : "internal_transfer";
+                  onChangeOverride(item.id, target);
+                }}
+                className={cn(
+                  "flex flex-col items-center justify-center gap-1 rounded-xl p-2.5 text-xs font-medium transition-all text-center border",
+                  item.overrideType === "internal_transfer" || (!item.overrideType && item.classificationKind === "internal_transfer")
+                    ? "bg-brand-sky text-white border-brand-sky shadow-xs"
+                    : "bg-secondary/60 hover:bg-secondary text-muted-foreground border-transparent"
+                )}
+              >
+                <ArrowLeftRight className="size-4" />
+                <span>Між своїми</span>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => {
+                  const target = item.overrideType === "shared_transit" ? null : "shared_transit";
+                  onChangeOverride(item.id, target);
+                }}
+                className={cn(
+                  "flex flex-col items-center justify-center gap-1 rounded-xl p-2.5 text-xs font-medium transition-all text-center border",
+                  item.overrideType === "shared_transit" || (!item.overrideType && item.classificationKind === "shared_transit")
+                    ? "bg-brand-violet text-white border-brand-violet shadow-xs"
+                    : "bg-secondary/60 hover:bg-secondary text-muted-foreground border-transparent"
+                )}
+              >
+                <Users className="size-4" />
+                <span>Спільне</span>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => {
+                  const target = item.overrideType === "ignored" ? null : "ignored";
+                  onChangeOverride(item.id, target);
+                  if (onToggleFake) {
+                    if (target === "ignored" && !item.isFake) onToggleFake(item.id);
+                    if (target === null && item.isFake) onToggleFake(item.id);
+                  }
+                }}
+                className={cn(
+                  "flex flex-col items-center justify-center gap-1 rounded-xl p-2.5 text-xs font-medium transition-all text-center border",
+                  item.overrideType === "ignored" || (!item.overrideType && (item.classificationKind === "ignored" || item.isFake))
+                    ? "bg-warning text-warning-foreground border-warning shadow-xs"
+                    : "bg-secondary/60 hover:bg-secondary text-muted-foreground border-transparent"
+                )}
+              >
+                <EyeOff className="size-4" />
+                <span>Виключити</span>
+              </button>
+            </div>
+
+            <p className="text-xs text-muted-foreground leading-relaxed">
+              {item.overrideType === "expense" || (!item.overrideType && item.classificationKind === "expense")
+                ? "🛒 Враховується у повсякденних витратах і списує щоденний ліміт."
+                : item.overrideType === "internal_transfer" || (!item.overrideType && item.classificationKind === "internal_transfer")
+                ? "🔄 Переказ між власними картками — чистий транзит. Не списує денний ліміт (0 грн)."
+                : item.overrideType === "shared_transit" || (!item.overrideType && item.classificationKind === "shared_transit")
+                ? "👥 Внесок у спільний бюджет / партнерці. Не списує персональний ліміт сьогодні та виключає подвійне списання."
+                : "🚫 Операція виключена з підрахунків та не впливає на денний ліміт."}
+            </p>
+          </div>
+        ) : onToggleFake && item.sourceType === "mono" ? (
           <div className="rounded-2xl border bg-card p-3.5 space-y-2">
             <div className="flex items-center justify-between gap-3">
               <div className="space-y-0.5">
@@ -186,7 +296,7 @@ export function TransactionDetailsModal({
               </Button>
             </div>
           </div>
-        )}
+        ) : null}
 
         {/* Joy Rating (Рейтинг радості) */}
         {isExpense && !item.isFake && onRate && (

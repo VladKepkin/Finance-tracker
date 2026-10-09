@@ -28,7 +28,7 @@ export const GET = withTelemetry("/api/transactions", async function GET(req: Re
   const accessibleAccountIds = getAccessibleAccountIds(db(), session.userId);
 
   const items = queryPage(db(), session.userId, {
-    accountId: account,
+    accountId: account && account !== "all" ? account : undefined,
     fromTime: from,
     toTime: to,
     limit,

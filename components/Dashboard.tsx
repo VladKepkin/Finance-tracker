@@ -19,6 +19,12 @@ import { Sheet } from "@/components/ui/sheet";
 import type { Allowance } from "@/lib/metrics/allowance";
 import { todayHero } from "@/lib/home/todayHero";
 import { groupByDay, localDay } from "@/lib/home/groupByDay";
+import {
+  classifyTransaction,
+  findPairedTransfers,
+  type TransferContext,
+  type TxOverrideType,
+} from "@/lib/transfers";
 import { cn } from "@/lib/utils";
 
 const RECENT_LIMIT = 6;
@@ -72,10 +78,16 @@ export function Dashboard({
   onOpenEvaluator,
   activeMonoAccounts,
   excludedAccounts,
+  txOverrides,
+  jarTitles,
+  partnerKeywords,
 }: {
   account: MonoAccount | undefined;
   activeMonoAccounts?: MonoAccount[];
   excludedAccounts?: string[];
+  txOverrides?: Record<string, TxOverrideType>;
+  jarTitles?: readonly string[] | null;
+  partnerKeywords?: readonly string[];
   wallet: WalletEntry[];
   cashAccounts: CashAccount[];
   rates: CurrencyRate[];
@@ -170,6 +182,18 @@ export function Dashboard({
       .sort((a, b) => b.day.localeCompare(a.day) || b.time - a.time)
       .slice(0, RECENT_LIMIT);
   }, [statement, wallet]);
+
+  const pairedIds = useMemo(() => findPairedTransfers(statement), [statement]);
+  const transferContext = useMemo(
+    () => ({
+      fakeIds,
+      txOverrides,
+      jarTitles,
+      excludedAccounts,
+      partnerKeywords,
+    }),
+    [fakeIds, txOverrides, jarTitles, excludedAccounts, partnerKeywords]
+  );
 
   const showSuggestionsChip = suggestionsCount !== null && suggestionsCount > 0;
 
@@ -269,7 +293,15 @@ export function Dashboard({
                   <div className="space-y-2">
                     {g.rows.map((row) =>
                       row.source === "card" ? (
-                        <RecentRow key={row.key} it={row.item} cc={accountCurrency} fake={fakeIds.has(row.item.id)} masked={masked} />
+                        <RecentRow
+                          key={row.key}
+                          it={row.item}
+                          cc={row.item.currencyCode ?? accountCurrency}
+                          fake={fakeIds.has(row.item.id)}
+                          masked={masked}
+                          context={transferContext}
+                          pairedIds={pairedIds}
+                        />
                       ) : (
                         <CashRecentRow key={row.key} entry={row.entry} accounts={cashAccounts} masked={masked} />
                       )
@@ -338,22 +370,52 @@ function timeOfDay(unixSeconds: number): string {
   return new Date(unixSeconds * 1000).toLocaleTimeString("uk-UA", { hour: "2-digit", minute: "2-digit" });
 }
 
-function RecentRow({ it, cc, fake, masked }: { it: MonoStatementItem; cc: number; fake: boolean; masked: boolean }) {
+function RecentRow({
+  it,
+  cc,
+  fake,
+  masked,
+  context,
+  pairedIds,
+}: {
+  it: MonoStatementItem;
+  cc: number;
+  fake: boolean;
+  masked: boolean;
+  context?: TransferContext;
+  pairedIds?: Set<string>;
+}) {
   const c = mccToCategory(it.mcc, it.amount);
+  const classification = context ? classifyTransaction(it, context, pairedIds) : null;
+  const isNeutral = classification
+    ? classification.isInternalTransfer || classification.isSharedTransit || classification.isExcluded
+    : fake;
   const expense = it.amount < 0;
   return (
-    <div className={cn(ROW_CLASS, fake && "opacity-45")}>
+    <div className={cn(ROW_CLASS, (fake || isNeutral) && "opacity-60")}>
       <div className="flex size-11 shrink-0 items-center justify-center rounded-full bg-secondary text-lg">
         {c.emoji}
       </div>
       <div className="min-w-0 flex-1">
-        <div className={cn("truncate text-sm font-medium", fake && "line-through")}>
+        <div className={cn("truncate text-sm font-medium", (fake || classification?.isExcluded) && "line-through")}>
           {it.description || c.label}
         </div>
-        <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
+        <div className="flex items-center gap-1.5 text-xs text-muted-foreground flex-wrap">
           <span>{c.label}</span>
           <span className="opacity-40">•</span>
           <span className="font-medium text-foreground/70">Картка</span>
+          {classification?.badge && (
+            <span
+              className={cn(
+                "rounded-full px-1.5 py-0.2 text-[10px] font-medium border",
+                classification.badge.variant === "warning" && "bg-warning/15 text-warning border-warning/30",
+                classification.badge.variant === "secondary" && "bg-secondary text-foreground/80 border-border/40",
+                classification.badge.variant === "outline" && "bg-muted/40 text-muted-foreground border-border"
+              )}
+            >
+              {classification.badge.label}
+            </span>
+          )}
         </div>
       </div>
       <div className="flex shrink-0 flex-col items-end gap-0.5">
@@ -363,8 +425,9 @@ function RecentRow({ it, cc, fake, masked }: { it: MonoStatementItem; cc: number
           <span
             className={cn(
               "text-sm font-semibold tabular-nums",
-              fake && "line-through",
-              !expense && !fake && "text-success"
+              (fake || classification?.isExcluded) && "line-through",
+              isNeutral && "text-muted-foreground",
+              !expense && !fake && !isNeutral && "text-success"
             )}
           >
             {expense ? "" : "+"}

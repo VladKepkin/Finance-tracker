@@ -4,6 +4,7 @@ import type { MonoAccount, MonoStatementItem } from "@/lib/monobank";
 import type { WalletEntry } from "@/lib/storage";
 import type { CashAccount } from "@/lib/cashAccounts";
 import type { CurrencyRate } from "@/lib/fx";
+import type { TxOverrideType } from "@/lib/transfers";
 import { Expenses } from "@/components/Expenses";
 import { WalletTab } from "@/components/WalletTab";
 import { Disclosure } from "@/components/ui/disclosure";
@@ -27,6 +28,10 @@ export function Money({
   onAccountUsed,
   txNotes,
   onSaveNote,
+  txOverrides,
+  onChangeOverride,
+  partnerKeywords,
+  excludedAccounts,
 }: {
   statement: MonoStatementItem[];
   accountCurrency: number;
@@ -46,6 +51,10 @@ export function Money({
   onAccountUsed: (id: string) => void;
   txNotes?: Record<string, string>;
   onSaveNote?: (id: string, note: string) => void;
+  txOverrides?: Record<string, TxOverrideType>;
+  onChangeOverride?: (id: string, override: TxOverrideType | null) => void;
+  partnerKeywords?: readonly string[];
+  excludedAccounts?: readonly string[];
 }) {
   const accountName = account
     ? account.maskedPan?.[0]
@@ -70,6 +79,10 @@ export function Money({
           onDeleteCashEntry={(id) => onWalletChange(wallet.filter((w) => w.id !== id))}
           txNotes={txNotes}
           onSaveNote={onSaveNote}
+          txOverrides={txOverrides}
+          onChangeOverride={onChangeOverride}
+          partnerKeywords={partnerKeywords}
+          excludedAccounts={excludedAccounts}
         />
       </div>
       <div className="lg:col-span-5 xl:col-span-4 sticky top-6 space-y-4">

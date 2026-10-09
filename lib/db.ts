@@ -304,6 +304,8 @@ const ALLOWED_KEYS = new Set([
   "cashAccounts",
   "txNotes",
   "excludedAccounts",
+  "txOverrides",
+  "partnerKeywords",
 ]);
 
 export function isAllowedKey(key: string): boolean {

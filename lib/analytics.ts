@@ -4,6 +4,11 @@ import type { WalletEntry } from "./storage";
 import { convertMinor, type CurrencyRate } from "./fx";
 import { isOwnJarTransfer } from "./jarTransfers";
 import { DEFAULT_CASH_ACCOUNT_ID } from "./cashAccounts";
+import {
+  isEffectiveExpense,
+  findPairedTransfers,
+  type TxOverrideType,
+} from "./transfers";
 
 export interface CategorySpend {
   category: Category;
@@ -44,16 +49,33 @@ export interface AnalyzeInput {
   toMs: number;
   jarTitles?: readonly string[] | null;
   salaries: { paidOn: string; amount: number; currency: number }[] | null;
+  txOverrides?: Record<string, TxOverrideType>;
+  excludedAccounts?: readonly string[];
+  partnerKeywords?: readonly string[];
 }
 
 export function analyze(input: AnalyzeInput): AnalyticsResult {
-  const { items, wallet, fakeIds, base, accountCurrency, rates, fromMs, toMs, jarTitles, salaries } = input;
+  const {
+    items,
+    wallet,
+    fakeIds,
+    base,
+    accountCurrency,
+    rates,
+    fromMs,
+    toMs,
+    jarTitles,
+    salaries,
+    txOverrides,
+    excludedAccounts,
+    partnerKeywords,
+  } = input;
   const inPeriod = (ms: number) => ms >= fromMs && ms <= toMs;
   const cardToBase = (minor: number) => convertMinor(minor, accountCurrency, base, rates);
 
-  const realCardExpenses = items.filter(
-    (i) => i.amount < 0 && !fakeIds.has(i.id) && !isOwnJarTransfer(i.mcc, i.description, jarTitles)
-  );
+  const pairedIds = findPairedTransfers(items);
+  const context = { fakeIds, txOverrides, jarTitles, excludedAccounts, partnerKeywords };
+  const realCardExpenses = items.filter((i) => isEffectiveExpense(i, context, pairedIds));
 
   const cashExpenseEntries = wallet.filter(
     (e) => e.kind === "expense" && inPeriod(new Date(e.date).getTime())

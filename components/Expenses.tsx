@@ -12,6 +12,11 @@ import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { isOwnJarTransfer } from "@/lib/jarTransfers";
+import {
+  classifyTransaction,
+  findPairedTransfers,
+  type TxOverrideType,
+} from "@/lib/transfers";
 import { cn } from "@/lib/utils";
 import {
   TransactionDetailsModal,
@@ -40,6 +45,9 @@ export interface UnifiedItem {
   note?: string;
   cashKind?: string;
   cashEntryId?: string;
+  overrideType?: TxOverrideType | null;
+  classificationKind?: "expense" | "income" | "internal_transfer" | "shared_transit" | "ignored";
+  classificationBadge?: { label: string; variant: "default" | "secondary" | "warning" | "outline" | "success" };
 }
 
 function dayLabel(unix: number): string {
@@ -66,6 +74,10 @@ export function Expenses({
   onDeleteCashEntry,
   txNotes,
   onSaveNote,
+  txOverrides,
+  onChangeOverride,
+  partnerKeywords,
+  excludedAccounts,
 }: {
   statement: MonoStatementItem[];
   accountCurrency: number;
@@ -80,6 +92,10 @@ export function Expenses({
   onDeleteCashEntry?: (id: string) => void;
   txNotes?: Record<string, string>;
   onSaveNote?: (id: string, note: string) => void;
+  txOverrides?: Record<string, TxOverrideType>;
+  onChangeOverride?: (id: string, override: TxOverrideType | null) => void;
+  partnerKeywords?: readonly string[];
+  excludedAccounts?: readonly string[];
 }) {
   const [query, setQuery] = useState("");
   const [sourceFilter, setSourceFilter] = useState<"all" | "mono" | "cash">("all");
@@ -88,11 +104,15 @@ export function Expenses({
   const [filtersOpen, setFiltersOpen] = useState(false);
   const [selectedTx, setSelectedTx] = useState<UnifiedItem | null>(null);
 
+  const pairedIds = useMemo(() => findPairedTransfers(statement), [statement]);
+
   const monoItems = useMemo<UnifiedItem[]>(() => {
+    const context = { fakeIds, txOverrides, jarTitles, excludedAccounts, partnerKeywords };
     return statement.map((it) => {
       const cat = mccToCategory(it.mcc, it.amount);
-      const isJar = isOwnJarTransfer(it.mcc, it.description, jarTitles);
-      const isFake = fakeIds.has(it.id);
+      const classification = classifyTransaction(it, context, pairedIds);
+      const isJar = classification.isOwnJar;
+      const isFake = classification.isExcluded;
       const rating = ratings ? (ratings[it.id] ?? null) : null;
       const note = txNotes ? txNotes[it.id] : undefined;
       return {
@@ -115,9 +135,12 @@ export function Expenses({
         originalMcc: it.originalMcc,
         rating,
         note,
+        overrideType: txOverrides?.[it.id] ?? null,
+        classificationKind: classification.kind,
+        classificationBadge: classification.badge,
       };
     });
-  }, [statement, accountCurrency, accountName, fakeIds, ratings, txNotes, jarTitles]);
+  }, [statement, accountCurrency, accountName, fakeIds, ratings, txNotes, jarTitles, txOverrides, excludedAccounts, partnerKeywords, pairedIds]);
 
   const cashItems = useMemo<UnifiedItem[]>(() => {
     if (!wallet || wallet.length === 0) return [];
@@ -573,6 +596,7 @@ export function Expenses({
         onRate={handleRate}
         onSaveNote={handleSaveNote}
         onDeleteCashEntry={onDeleteCashEntry}
+        onChangeOverride={onChangeOverride}
       />
     </div>
   );
@@ -658,12 +682,16 @@ function UnifiedRow({
               hold
             </Badge>
           )}
-          {it.isFake && (
+          {it.classificationBadge ? (
+            <Badge variant={it.classificationBadge.variant} className="shrink-0 py-0 text-[10px]">
+              {it.classificationBadge.label}
+            </Badge>
+          ) : it.isFake ? (
             <Badge variant="warning" className="shrink-0 py-0 text-[10px] gap-1">
               <EyeOff className="size-2.5" /> фейк
             </Badge>
-          )}
-          {it.isJarTransfer && (
+          ) : null}
+          {it.isJarTransfer && !it.classificationBadge && (
             <Badge variant="secondary" className="shrink-0 py-0 text-[10px]">
               у банку
             </Badge>

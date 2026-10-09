@@ -52,6 +52,8 @@ const SYNC_KEYS = [
   "cashAccounts",
   "txNotes",
   "excludedAccounts",
+  "txOverrides",
+  "partnerKeywords",
 ] as const;
 type SyncKey = (typeof SYNC_KEYS)[number];
 
@@ -107,6 +109,8 @@ const LEGACY_MAP: Record<SyncKey, string> = {
   cashAccounts: "mt.cashAccounts",
   txNotes: "mt.txNotes",
   excludedAccounts: "mt.excludedAccounts",
+  txOverrides: "mt.txOverrides",
+  partnerKeywords: "mt.partnerKeywords",
 };
 
 function importLegacyLocal(server: Record<string, unknown>): void {
@@ -208,6 +212,24 @@ export const getExcludedAccounts = (): string[] => {
   return Array.isArray(v) ? (v.filter((x): x is string => typeof x === "string") as string[]) : [];
 };
 export const setExcludedAccounts = (ids: string[]) => set("excludedAccounts", ids);
+
+export type TxOverrideType = "expense" | "internal_transfer" | "shared_transit" | "ignored";
+export type TxOverridesMap = Record<string, TxOverrideType>;
+
+export const getTxOverrides = (): TxOverridesMap => {
+  const v = get<unknown>("txOverrides", {});
+  if (v && typeof v === "object" && !Array.isArray(v)) {
+    return v as TxOverridesMap;
+  }
+  return {};
+};
+export const setTxOverrides = (overrides: TxOverridesMap) => set("txOverrides", overrides);
+
+export const getPartnerKeywords = (): string[] => {
+  const v = get<unknown>("partnerKeywords", []);
+  return Array.isArray(v) ? (v.filter((x): x is string => typeof x === "string") as string[]) : [];
+};
+export const setPartnerKeywords = (keywords: string[]) => set("partnerKeywords", keywords);
 
 export function uid(): string {
   return Math.random().toString(36).slice(2) + Date.now().toString(36);

@@ -14,6 +14,10 @@ import {
   setCashAccounts,
   getExcludedAccounts,
   setExcludedAccounts,
+  getTxOverrides,
+  setTxOverrides,
+  getPartnerKeywords,
+  setPartnerKeywords,
   type WishItem,
 } from "@/lib/storage";
 import type { IncomeSchedule } from "@/lib/metrics/schedule";
@@ -241,6 +245,30 @@ describe("getExcludedAccounts", () => {
   it("фільтрує нестрокові значення та сміття", () => {
     setExcludedAccounts(["valid", 123 as unknown as string, null as unknown as string]);
     expect(getExcludedAccounts()).toEqual(["valid"]);
+  });
+});
+
+describe("getTxOverrides", () => {
+  it("повертає збережені перевизначення статусів транзакцій", () => {
+    setTxOverrides({ "tx-1": "internal_transfer", "tx-2": "shared_transit" });
+    expect(getTxOverrides()).toEqual({ "tx-1": "internal_transfer", "tx-2": "shared_transit" });
+  });
+
+  it("повертає порожній об'єкт за замовчуванням", () => {
+    setTxOverrides({});
+    expect(getTxOverrides()).toEqual({});
+  });
+});
+
+describe("getPartnerKeywords", () => {
+  it("повертає збережені ключові слова", () => {
+    setPartnerKeywords(["кохана", "спільне", "бюджет"]);
+    expect(getPartnerKeywords()).toEqual(["кохана", "спільне", "бюджет"]);
+  });
+
+  it("фільтрує нестрокові значення", () => {
+    setPartnerKeywords(["бюджет", 42 as unknown as string]);
+    expect(getPartnerKeywords()).toEqual(["бюджет"]);
   });
 });
 

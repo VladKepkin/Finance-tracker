@@ -43,6 +43,12 @@ import {
   setTxNotes as persistTxNotes,
   getExcludedAccounts,
   setExcludedAccounts as persistExcludedAccounts,
+  getTxOverrides,
+  setTxOverrides as persistTxOverrides,
+  getPartnerKeywords,
+  setPartnerKeywords as persistPartnerKeywords,
+  type TxOverrideType,
+  type TxOverridesMap,
   type WalletEntry,
   type WishItem,
 } from "@/lib/storage";
@@ -51,6 +57,11 @@ import { incomePeriodStart, incomePeriodEnd, type IncomeSchedule } from "@/lib/m
 import { currencyMeta, type MonoStatementItem } from "@/lib/monobank";
 import { formatMoney } from "@/lib/format";
 import { isOwnJarTransfer } from "@/lib/jarTransfers";
+import {
+  findPairedTransfers,
+  isEffectiveExpense,
+  isEffectiveIncome,
+} from "@/lib/transfers";
 import { cn } from "@/lib/utils";
 import { TokenGate } from "@/components/TokenGate";
 import { RefreshButton } from "@/components/RefreshButton";
@@ -182,6 +193,8 @@ export default function Home() {
   const [suggestionsCount, setSuggestionsCount] = useState<number | null>(null);
   const [txNotes, setTxNotesState] = useState<Record<string, string>>({});
   const [excludedAccounts, setExcludedAccountsState] = useState<string[]>([]);
+  const [txOverrides, setTxOverridesState] = useState<TxOverridesMap>({});
+  const [partnerKeywords, setPartnerKeywordsState] = useState<string[]>([]);
 
   const [budgetScope, setBudgetScope] = useState<"personal" | "family">("personal");
 
@@ -252,6 +265,8 @@ export default function Home() {
       setCashAccountsState(getCashAccounts());
       setTxNotesState(getTxNotes());
       setExcludedAccountsState(getExcludedAccounts());
+      setTxOverridesState(getTxOverrides());
+      setPartnerKeywordsState(getPartnerKeywords());
       setHydrated(true);
     });
   }, []);
@@ -316,6 +331,27 @@ export default function Home() {
     persistFakeIds(next);
   };
 
+  const updateTxOverride = (txId: string, override: TxOverrideType | null) => {
+    const next = { ...txOverrides };
+    if (override === null) {
+      delete next[txId];
+    } else {
+      next[txId] = override;
+    }
+    setTxOverridesState(next);
+    persistTxOverrides(next);
+
+    if (override === "ignored" && !fakeIds.includes(txId)) {
+      const nextFake = [...fakeIds, txId];
+      setFakeIdsState(nextFake);
+      persistFakeIds(nextFake);
+    } else if (override !== "ignored" && fakeIds.includes(txId)) {
+      const nextFake = fakeIds.filter((id) => id !== txId);
+      setFakeIdsState(nextFake);
+      persistFakeIds(nextFake);
+    }
+  };
+
   const account = state.client?.accounts.find((a) => a.id === state.selectedAccount);
   const accountCurrency = account?.currencyCode ?? 980;
   const fakeSet = useMemo(() => new Set(fakeIds), [fakeIds]);
@@ -325,8 +361,20 @@ export default function Home() {
     state.client?.jars
       ?.map((j) => j.title)
       .filter((t): t is string => typeof t === "string" && t.trim() !== "") ?? null;
-  const jarTitlesKey = jarTitlesRaw?.join("") ?? null;
+  const jarTitlesKey = jarTitlesRaw?.join(" ") ?? null;
   const jarTitles = useMemo(() => jarTitlesRaw, [jarTitlesKey]);
+
+  const pairedIds = useMemo(() => findPairedTransfers(state.statement), [state.statement]);
+  const transferContext = useMemo(
+    () => ({
+      fakeIds: fakeSet,
+      txOverrides,
+      jarTitles,
+      excludedAccounts,
+      partnerKeywords,
+    }),
+    [fakeSet, txOverrides, jarTitles, excludedAccounts, partnerKeywords]
+  );
 
   const analytics = useMemo(
     () =>
@@ -341,6 +389,9 @@ export default function Home() {
         toMs: state.range.toMs,
         jarTitles,
         salaries: rawSalaries,
+        txOverrides,
+        excludedAccounts,
+        partnerKeywords,
       }),
     [
       state.statement,
@@ -353,6 +404,9 @@ export default function Home() {
       state.range.toMs,
       jarTitles,
       rawSalaries,
+      txOverrides,
+      excludedAccounts,
+      partnerKeywords,
     ]
   );
 
@@ -503,9 +557,7 @@ export default function Home() {
 
   useEffect(() => {
     const ids = state.statement
-      .filter(
-        (it) => it.amount < 0 && !fakeSet.has(it.id) && !isOwnJarTransfer(it.mcc, it.description, jarTitles)
-      )
+      .filter((it) => isEffectiveExpense(it, transferContext, pairedIds))
       .map((it) => it.id);
     if (ids.length === 0) {
       setRatingsState({});
@@ -517,7 +569,7 @@ export default function Home() {
     return () => {
       cancelled = true;
     };
-  }, [state.statement, fakeSet, jarTitles, loadRatings]);
+  }, [state.statement, transferContext, pairedIds, loadRatings]);
 
   const rateTx = useCallback(
     async (txId: string, score: number | null) => {
@@ -602,9 +654,7 @@ export default function Home() {
     const todayStart = Math.floor(nowSeconds / 86_400) * 86_400;
     let total = 0;
     for (const it of state.statement) {
-      if (it.amount >= 0) continue;
-      if (fakeSet.has(it.id)) continue;
-      if (isOwnJarTransfer(it.mcc, it.description, jarTitles)) continue;
+      if (!isEffectiveExpense(it, transferContext, pairedIds)) continue;
       if (it.time < todayStart || it.time >= todayStart + 86_400) continue;
       const cur = it.currencyCode ?? accountCurrency;
       const v = convertMinor(Math.abs(it.amount), cur, base, rates);
@@ -622,7 +672,7 @@ export default function Home() {
       total += v;
     }
     return { ok: true as const, value: total };
-  }, [state.statement, fakeSet, jarTitles, accountCurrency, base, rates, wallet, nowSeconds]);
+  }, [state.statement, transferContext, pairedIds, accountCurrency, base, rates, wallet, nowSeconds]);
   const spentTodayBase = spentTodayResult.ok ? spentTodayResult.value : null;
   const spentTodayFxUnavailable = spentTodayResult.ok ? null : spentTodayResult.currency;
 
@@ -660,14 +710,14 @@ export default function Home() {
     if (periodStatement === null) return { ok: true as const, loading: true as const, value: null };
     const todayStart = Math.floor(nowSeconds / 86_400) * 86_400;
     const rangeEnd = Math.min(periodBounds.end, todayStart + 86_400);
+    const periodPairedIds = findPairedTransfers(periodStatement);
     let total = 0;
     for (const it of periodStatement) {
-      if (it.amount >= 0) continue;
-      if (fakeSet.has(it.id)) continue;
-      if (isOwnJarTransfer(it.mcc, it.description, jarTitles)) continue;
+      if (!isEffectiveExpense(it, transferContext, periodPairedIds)) continue;
       if (it.time < periodBounds.start || it.time >= rangeEnd) continue;
-      const v = convertMinor(Math.abs(it.amount), accountCurrency, base, rates);
-      if (v === null) return { ok: false as const, currency: accountCurrency };
+      const cur = it.currencyCode ?? accountCurrency;
+      const v = convertMinor(Math.abs(it.amount), cur, base, rates);
+      if (v === null) return { ok: false as const, currency: cur };
       total += v;
     }
     for (const e of wallet) {
@@ -681,7 +731,7 @@ export default function Home() {
       total += v;
     }
     return { ok: true as const, loading: false as const, value: total };
-  }, [periodBounds, periodStatement, fakeSet, jarTitles, accountCurrency, base, rates, wallet, nowSeconds]);
+  }, [periodBounds, periodStatement, transferContext, accountCurrency, base, rates, wallet, nowSeconds]);
   const periodSpentLoading = periodSpentResult !== null && periodSpentResult.ok && periodSpentResult.loading;
   const periodSpentBase = periodSpentResult && periodSpentResult.ok && !periodSpentResult.loading ? periodSpentResult.value : null;
   const periodSpentFxUnavailable = periodSpentResult && !periodSpentResult.ok ? periodSpentResult.currency : null;
@@ -877,11 +927,8 @@ export default function Home() {
   }, [commitmentsResult]);
 
   const ratableItems = useMemo(
-    () =>
-      state.statement.filter(
-        (it) => it.amount < 0 && !fakeSet.has(it.id) && !isOwnJarTransfer(it.mcc, it.description, jarTitles)
-      ),
-    [state.statement, fakeSet, jarTitles]
+    () => state.statement.filter((it) => isEffectiveExpense(it, transferContext, pairedIds)),
+    [state.statement, transferContext, pairedIds]
   );
   const ratingsLoading = ratings === null && ratingsError === null;
   const joyRatedCount = useMemo(
@@ -1275,6 +1322,9 @@ export default function Home() {
             onOpenEvaluator={() => setEvaluatorOpen(true)}
             activeMonoAccounts={activeMonoAccounts}
             excludedAccounts={excludedAccounts}
+            txOverrides={txOverrides}
+            jarTitles={jarTitles}
+            partnerKeywords={partnerKeywords}
           />
         )}
         {tab === "money" && (
@@ -1297,6 +1347,10 @@ export default function Home() {
             onAccountUsed={setLastUsedAccountId}
             txNotes={txNotes}
             onSaveNote={updateTxNotes}
+            txOverrides={txOverrides}
+            onChangeOverride={updateTxOverride}
+            partnerKeywords={partnerKeywords}
+            excludedAccounts={excludedAccounts}
           />
         )}
         {tab === "goals" && (

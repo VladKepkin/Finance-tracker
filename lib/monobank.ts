@@ -51,6 +51,7 @@ export interface MonoStatementItem {
   comment?: string;
   receiptId?: string;
   counterName?: string;
+  accountId?: string;
 }
 
 export const CURRENCY: Record<number, { code: string; symbol: string }> = {

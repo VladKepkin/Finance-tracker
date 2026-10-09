@@ -26,6 +26,7 @@ interface TxRow {
   hold: number;
   comment: string | null;
   counter_name: string | null;
+  account_id?: string;
 }
 
 function rowToItem(r: TxRow): MonoStatementItem {
@@ -44,6 +45,7 @@ function rowToItem(r: TxRow): MonoStatementItem {
     balance: r.balance ?? 0,
     comment: r.comment ?? undefined,
     counterName: r.counter_name ?? undefined,
+    accountId: r.account_id ?? undefined,
   };
 }
 
@@ -98,8 +100,9 @@ export async function fetchTransactionsRange(
   const all: TxRow[] = [];
   for (let page = 0; page < MAX_PAGES; page++) {
     const offset = page * PAGE_SIZE;
+    const accParam = accountId && accountId !== "all" ? `&account=${encodeURIComponent(accountId)}` : "";
     const res = await fetch(
-      `/api/transactions?account=${encodeURIComponent(accountId)}&from=${fromSeconds}&to=${toSeconds}&limit=${PAGE_SIZE}&offset=${offset}`
+      `/api/transactions?from=${fromSeconds}&to=${toSeconds}&limit=${PAGE_SIZE}&offset=${offset}${accParam}`
     );
     if (res.status === 401) {
       redirectToLogin();

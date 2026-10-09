@@ -9,7 +9,7 @@ import { DEFAULT_CASH_ACCOUNT_ID, type CashAccount } from "@/lib/cashAccounts";
 import { accountBalances, entriesForAccount } from "@/lib/home/accountEntries";
 import { ACCOUNT_TYPE_LABEL } from "@/lib/accountTypeLabel";
 import { convertMinor, type CurrencyRate } from "@/lib/fx";
-import { formatMoney } from "@/lib/format";
+import { formatMoney, pluralUk } from "@/lib/format";
 import { Sheet } from "@/components/ui/sheet";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
@@ -61,6 +61,14 @@ export function AccountsStrip({
   const visibleMono = monoAccounts.filter((a) => a.balance !== 0 || a.id === selectedMonoId);
   const money = (minor: number, cur: number) => (masked ? MASK : formatMoney(minor, cur));
 
+  const activeMonoAccounts = visibleMono.filter((a) => !excludedAccounts.includes(a.id));
+  let aggregatedCardsTotal = 0;
+  for (const a of activeMonoAccounts) {
+    const own = Math.max(0, a.balance - (a.creditLimit ?? 0));
+    const converted = convertMinor(own, a.currencyCode, base, rates) ?? 0;
+    aggregatedCardsTotal += converted;
+  }
+
   const trimmed = newName.trim();
   const duplicate = cashAccounts.some((a) => a.name.trim().toLowerCase() === trimmed.toLowerCase());
   const create = () => {
@@ -78,6 +86,33 @@ export function AccountsStrip({
     <section className="space-y-3">
       <h2 className="px-1 text-[17px] font-semibold">Мої рахунки</h2>
       <div className="no-scrollbar -mx-4 flex snap-x snap-mandatory gap-3 overflow-x-auto px-4 pb-2 md:mx-0 md:px-0 md:grid md:grid-cols-2 lg:grid-cols-3 md:gap-3 md:overflow-visible">
+        {visibleMono.length > 1 && (
+          <button
+            onClick={() => onSelectMono("all")}
+            className={cn(
+              "soft-shadow flex min-w-[158px] md:min-w-0 shrink-0 snap-start flex-col gap-4 rounded-3xl border bg-card p-4 text-left transition-transform active:scale-[0.98]",
+              selectedMonoId === "all" || !selectedMonoId ? "border-foreground/70" : "border-transparent"
+            )}
+          >
+            <span className="flex items-center gap-2 text-sm font-medium flex-wrap">
+              <span className="flex size-8 items-center justify-center rounded-full bg-primary/10 text-primary">
+                <CreditCard className="size-4" />
+              </span>
+              <span className="truncate font-semibold">Усі рахунки</span>
+              <span className="rounded-full bg-primary/15 px-1.5 py-0.5 text-[10px] text-primary font-medium">
+                Разом
+              </span>
+            </span>
+            <span className="font-display text-lg font-semibold tabular-nums text-foreground">
+              {masked ? MASK : formatMoney(aggregatedCardsTotal, base)}
+            </span>
+            <span className="flex items-center gap-1 text-xs text-muted-foreground">
+              {(selectedMonoId === "all" || !selectedMonoId) && <Check className="size-3" />}
+              {activeMonoAccounts.length}{" "}
+              {pluralUk(activeMonoAccounts.length, "картка", "картки", "карток")} у бюджеті
+            </span>
+          </button>
+        )}
         {visibleMono.map((a) => {
           const selected = a.id === selectedMonoId;
           const isExcluded = excludedAccounts.includes(a.id);
