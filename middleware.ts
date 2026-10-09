@@ -27,8 +27,19 @@ export async function middleware(req: NextRequest) {
 
       const isDev = process.env.NODE_ENV !== "production";
       const host = req.headers.get("host") || "";
-      const isLocal = host.startsWith("localhost") || host.startsWith("127.0.0.1");
-      if (!secret && (isDev || isLocal)) {
+      const isPrivateOrLocal =
+        host.startsWith("localhost") ||
+        host.startsWith("127.0.0.1") ||
+        host.startsWith("::1") ||
+        host.startsWith("[::1]") ||
+        host.startsWith("192.168.") ||
+        host.startsWith("10.") ||
+        /^172\.(1[6-9]|2[0-9]|3[0-1])\./.test(host) ||
+        host.startsWith("money-tracker") ||
+        host.startsWith("finance-tracker") ||
+        host.startsWith("money-web");
+
+      if (!secret && (isDev || isPrivateOrLocal)) {
         return NextResponse.next();
       }
     }
