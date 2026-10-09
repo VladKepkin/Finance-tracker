@@ -12,3 +12,7 @@ npm-debug.log*
 .DS_Store
 .idea
 README.md
+tests
+scripts
+vitest.config.ts
+*.md

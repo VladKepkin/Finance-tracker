@@ -1,13 +1,30 @@
 services:
-  web:
-    build: .
-    container_name: money-web
+  money-tracker:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: money-tracker:latest
+    container_name: money-tracker
     restart: unless-stopped
-    env_file: .env
+    ports:
+      - "${PORT:-3000}:3000"
     environment:
-      DATABASE_PATH: /app/data/money.db
-      NODE_ENV: production
+      - NODE_ENV=production
+      - PORT=3000
+      - HOSTNAME=0.0.0.0
+      - DATABASE_PATH=/app/data/money.db
+    env_file:
+      - .env
     volumes:
       - ./data:/app/data
-    ports:
-      - "3000:3000"
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:3000/login"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 15s
