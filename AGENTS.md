@@ -44,47 +44,61 @@ gitGraph
 ### 2.1. Branch Types
 1. **`main` (Production)**:
    - Contains strictly production-ready, verified code.
-   - Deployments to production (servers / Proxmox / Docker) run off this branch.
-   - Direct commits to `main` are restricted unless explicitly instructed by the repository owner.
-2. **`dev` (Integration & Testing)**:
+   - Deployments to production (Prod VM, port 3000) run automatically off this branch.
+   - > [!CAUTION]
+   - > **NEVER PUSH DIRECTLY TO `main`!** Direct commits and direct pushes to `main` are strictly forbidden. All updates to `main` must arrive exclusively through an approved GitHub Pull Request from `dev`.
+2. **`dev` (Integration & Staging)**:
    - Central staging branch.
-   - All feature and fix branches are merged into `dev` for integration testing and staging validation.
-   - Once thoroughly tested on `dev`, changes are merged into `main`.
+   - Deployments to staging (Dev VM, port 3001) run automatically off this branch.
+   - All feature and fix branches are merged into `dev` via Pull Requests.
 3. **Working Branches**:
    - `feature/<feature-name>`: New capabilities and user-facing additions.
    - `fix/<issue-name>`: Bug fixes and edge-case resolution.
    - `refactor/<scope>`: Code cleanup and architectural restructuring.
    - `test/<scope>`: Additional test suites and benchmarks.
 
-### 2.2. Typical Development Lifecycle
-1. Branch off `dev`:
-   ```bash
-   git checkout dev
-   git pull origin dev
-   git checkout -b feature/my-feature
-   ```
-2. Implement, verify with tests, commit, and push immediately:
-   ```bash
-   npm test
-   npx tsc --noEmit
-   git add .
-   git commit -m "feat: implement feature xyz"
-   git push -u origin feature/my-feature
-   ```
-3. Merge into `dev` for integration testing:
-   ```bash
-   git checkout dev
-   git pull origin dev
-   git merge feature/my-feature
-   git push origin dev
-   ```
-4. Release from `dev` to `main`:
-   ```bash
-   git checkout main
-   git pull origin main
-   git merge dev
-   git push origin main
-   ```
+### 2.2. Two-Stage Pull Request Workflow
+
+```mermaid
+flowchart LR
+    A["feature/* branch"] -->|"1. gh pr create"| B["PR -> dev"]
+    B -->|"Review & Merge"| C["dev branch"]
+    C -->|"Auto-Deploy (port 3001)"| D["Staging Validation"]
+    D -->|"2. gh pr create"| E["PR -> main"]
+    E -->|"Review & Merge"| F["main branch"]
+    F -->|"Auto-Deploy (port 3000)"| G["Production Active"]
+```
+
+1. **Feature/Fix Development**:
+   - Branch off `dev`:
+     ```bash
+     git checkout dev
+     git pull origin dev
+     git checkout -b feature/my-feature
+     ```
+   - Implement, verify tests (`npm test`), verify types (`npx tsc --noEmit`), commit, and push:
+     ```bash
+     git add .
+     git commit -m "feat: implement feature xyz"
+     git push -u origin feature/my-feature
+     ```
+
+2. **Stage 1: Pull Request to `dev` (Review & Staging)**:
+   - Create a Pull Request into `dev` using GitHub CLI:
+     ```bash
+     gh pr create --base dev --head feature/my-feature --title "feat: implement feature xyz" --body "Summary of changes"
+     ```
+   - Review and merge the PR on GitHub into `dev`.
+   - GitHub Actions will automatically run the CI suite and trigger `deploy-dev` on the self-hosted Dev VM (port 3001).
+   - Test and validate live functionality in the staging environment.
+
+3. **Stage 2: Pull Request to `main` (Release to Production)**:
+   - Once verified on the staging server, open a release PR from `dev` into `main`:
+     ```bash
+     gh pr create --base main --head dev --title "release: integrate feature xyz into production" --body "Changelog and verification results"
+     ```
+   - Review and merge the PR on GitHub into `main`.
+   - GitHub Actions will automatically trigger `deploy-prod` on the self-hosted Prod VM (port 3000).
 
 ---
 
