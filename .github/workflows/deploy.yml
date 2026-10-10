@@ -1,0 +1,74 @@
+name: CI/CD Pipeline
+
+on:
+  push:
+    branches:
+      - dev
+      - main
+  pull_request:
+    branches:
+      - dev
+      - main
+
+jobs:
+  test:
+    name: Test & Typecheck
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: "npm"
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Run Vitest Suite (624 tests)
+        run: npm test
+
+      - name: Run TypeScript Check
+        run: npx tsc --noEmit
+
+  deploy-dev:
+    name: Deploy to Dev Environment
+    needs: test
+    if: github.event_name == 'push' && github.ref == 'refs/heads/dev'
+    runs-on: [self-hosted, dev]
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Ensure .env exists
+        run: |
+          if [ ! -f .env ]; then
+            echo "Copying .env.example to .env for dev..."
+            cp .env.example .env
+          fi
+
+      - name: Deploy Dev Containers
+        run: |
+          docker compose -f docker-compose.dev.yml up -d --build --remove-orphans
+
+  deploy-prod:
+    name: Deploy to Production Environment
+    needs: test
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    runs-on: [self-hosted, prod]
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Ensure .env exists
+        run: |
+          if [ ! -f .env ]; then
+            echo "Copying .env.example to .env for prod..."
+            cp .env.example .env
+          fi
+
+      - name: Deploy Prod Containers
+        run: |
+          docker compose -f docker-compose.yml up -d --build --remove-orphans
