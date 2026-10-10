@@ -34,10 +34,29 @@ export function getPgPool(): Pool {
   return poolInstance;
 }
 
+let schemaInitialized = false;
+let schemaInitPromise: Promise<void> | null = null;
+
+export async function ensurePgSchema(pool: Pool = getPgPool()): Promise<void> {
+  if (schemaInitialized) return;
+  if (!schemaInitPromise) {
+    schemaInitPromise = createPgSchema(pool)
+      .then(() => {
+        schemaInitialized = true;
+      })
+      .catch((err) => {
+        schemaInitPromise = null;
+        throw err;
+      });
+  }
+  return schemaInitPromise;
+}
+
 export async function queryPg<R extends QueryResultRow = any>(
   sql: string,
   params: any[] = []
 ): Promise<QueryResult<R>> {
+  await ensurePgSchema();
   const pool = getPgPool();
   const start = performance.now();
   try {
@@ -49,6 +68,7 @@ export async function queryPg<R extends QueryResultRow = any>(
 }
 
 export async function withPgClient<T>(fn: (client: PoolClient) => Promise<T>): Promise<T> {
+  await ensurePgSchema();
   const pool = getPgPool();
   const client = await pool.connect();
   try {

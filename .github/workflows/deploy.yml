@@ -44,7 +44,10 @@ jobs:
 
       - name: Ensure .env exists
         run: |
-          if [ ! -f .env ]; then
+          if [ -f /home/devlad/finance-dev.env ]; then
+            echo "Using /home/devlad/finance-dev.env..."
+            cp /home/devlad/finance-dev.env .env
+          elif [ ! -f .env ]; then
             echo "Copying .env.example to .env for dev..."
             cp .env.example .env
           fi
@@ -64,7 +67,10 @@ jobs:
 
       - name: Ensure .env exists
         run: |
-          if [ ! -f .env ]; then
+          if [ -f /home/devlad/finance-prod.env ]; then
+            echo "Using /home/devlad/finance-prod.env..."
+            cp /home/devlad/finance-prod.env .env
+          elif [ ! -f .env ]; then
             echo "Copying .env.example to .env for prod..."
             cp .env.example .env
           fi

@@ -19,8 +19,27 @@ import type { MonoStatementItem } from "./monobank";
 
 // --- Users ---
 
+let seededUser = false;
+let seedPromise: Promise<void> | null = null;
+async function ensurePgSeededUser(): Promise<void> {
+  if (!isPostgresConfigured() || seededUser) return;
+  if (!seedPromise) {
+    seedPromise = pgRepo
+      .seedSingleUserPg()
+      .then(() => {
+        seededUser = true;
+      })
+      .catch((err) => {
+        seedPromise = null;
+        console.error("[data-adapter] failed to seed initial user:", err);
+      });
+  }
+  return seedPromise;
+}
+
 export async function adapterGetUserByUsername(username: string): Promise<UserRow | undefined> {
   if (isPostgresConfigured()) {
+    await ensurePgSeededUser();
     return pgRepo.getUserByUsernamePg(username);
   }
   return getUserByUsername(username);
@@ -28,6 +47,7 @@ export async function adapterGetUserByUsername(username: string): Promise<UserRo
 
 export async function adapterGetUserById(id: number): Promise<UserRow | undefined> {
   if (isPostgresConfigured()) {
+    await ensurePgSeededUser();
     return pgRepo.getUserByIdPg(id);
   }
   return getUserById(id);
