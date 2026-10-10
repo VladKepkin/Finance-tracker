@@ -1,7 +1,6 @@
 import { NextResponse } from "next/server";
 import { getSession } from "@/lib/session";
-import { db } from "@/lib/db";
-import { generateMonthlyReport } from "@/lib/export/exportPayload";
+import { generateMonthlyReportAsync } from "@/lib/export/exportPayload";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -27,7 +26,7 @@ export async function GET(req: Request) {
 
   const jarTitles = searchParams.getAll("jarTitle");
 
-  const markdown = generateMonthlyReport(db(), {
+  const markdown = await generateMonthlyReportAsync({
     userId: session.userId,
     accountId: account,
     accountCurrency,

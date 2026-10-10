@@ -18,6 +18,12 @@ import {
   setTxOverrides,
   getPartnerKeywords,
   setPartnerKeywords,
+  getTxCommitments,
+  setTxCommitments,
+  getCommitmentOverrides,
+  setCommitmentOverrides,
+  getManualMode,
+  setManualMode,
   type WishItem,
 } from "@/lib/storage";
 import type { IncomeSchedule } from "@/lib/metrics/schedule";
@@ -269,6 +275,48 @@ describe("getPartnerKeywords", () => {
   it("фільтрує нестрокові значення", () => {
     setPartnerKeywords(["бюджет", 42 as unknown as string]);
     expect(getPartnerKeywords()).toEqual(["бюджет"]);
+  });
+});
+
+describe("getTxCommitments", () => {
+  it("повертає збережені зв'язки транзакцій із зобов'язаннями", () => {
+    setTxCommitments({ "tx-123": 1, "tx-456": 2 });
+    expect(getTxCommitments()).toEqual({ "tx-123": 1, "tx-456": 2 });
+  });
+
+  it("повертає порожній об'єкт за замовчуванням", () => {
+    setTxCommitments({});
+    expect(getTxCommitments()).toEqual({});
+  });
+});
+
+describe("getCommitmentOverrides", () => {
+  it("повертає збережені оверрайди зобов'язань", () => {
+    const data = {
+      1: { periodStart: 1700000, status: "settled_externally" as const, note: "Оплатив роботодавець" },
+      2: { periodStart: 1700000, status: "partial_pending" as const },
+    };
+    setCommitmentOverrides(data);
+    expect(getCommitmentOverrides()).toEqual(data);
+  });
+
+  it("повертає порожній об'єкт за замовчуванням", () => {
+    setCommitmentOverrides({});
+    expect(getCommitmentOverrides()).toEqual({});
+  });
+});
+
+describe("getManualMode", () => {
+  it("повертає збережене значення прапорця ручного режиму", () => {
+    setManualMode(true);
+    expect(getManualMode()).toBe(true);
+    setManualMode(false);
+    expect(getManualMode()).toBe(false);
+  });
+
+  it("повертає false за замовчуванням", () => {
+    setManualMode(false);
+    expect(getManualMode()).toBe(false);
   });
 });
 

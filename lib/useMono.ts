@@ -7,6 +7,8 @@ import {
   hydrateStore,
   getSelectedAccount,
   setSelectedAccount as persistSelected,
+  setManualMode,
+  getExcludedAccounts,
 } from "./storage";
 
 export const REFRESH_COOLDOWN_MS = 60_000;
@@ -49,7 +51,7 @@ function rowToItem(r: TxRow): MonoStatementItem {
   };
 }
 
-export type Period = "month" | "prev" | "7d";
+export type Period = "month" | "prev" | "7d" | "year" | "all";
 
 export interface PeriodRange {
   fromMs: number;
@@ -66,6 +68,13 @@ export function rangeFor(period: Period): PeriodRange {
     const from = new Date(now.getFullYear(), now.getMonth() - 1, 1, 0, 0, 0).getTime();
     const to = new Date(now.getFullYear(), now.getMonth(), 1, 0, 0, 0).getTime() - 1000;
     return { fromMs: from, toMs: to, label: "Минулий місяць" };
+  }
+  if (period === "year") {
+    const from = new Date(now.getFullYear(), 0, 1, 0, 0, 0).getTime();
+    return { fromMs: from, toMs: now.getTime(), label: "Цей рік" };
+  }
+  if (period === "all") {
+    return { fromMs: 0, toMs: now.getTime(), label: "Увесь час" };
   }
   const from = new Date(now.getFullYear(), now.getMonth(), 1, 0, 0, 0).getTime();
   return { fromMs: from, toMs: now.getTime(), label: "Цей місяць" };
@@ -198,9 +207,12 @@ export function useMono() {
         const info = data as MonoClientInfo;
         setHasToken(true);
         setClient(info);
-        const first = getSelectedAccount() || info.accounts[0]?.id || "0";
+        // За замовчуванням обираємо "all", щоб одразу показати всі підключені картки та операції
+        const first = info.accounts.length > 1 ? "all" : (info.accounts[0]?.id || "all");
         setSelected(first);
         persistSelected(first);
+        setManualMode(false);
+        void fetch("/api/sync/status", { method: "POST" }).catch(() => {});
         await fetchStatement(first, period);
       } catch (e) {
         setError((e as Error).message);
@@ -215,22 +227,37 @@ export function useMono() {
     let cancelled = false;
     void hydrateStore().then(async () => {
       if (cancelled) return;
-      setSelected(getSelectedAccount());
+      const initialSelected = getSelectedAccount();
+      setSelected(initialSelected || "all");
       setLoading(true);
       try {
         const loaded = await loadClient();
-        if (cancelled || !loaded) return;
-        const { info } = loaded;
-        setHasToken(true);
-        setClient(info);
-        setLastFetched(loaded.fetchedAt);
-        const acc = getSelectedAccount() || info.accounts[0]?.id || "0";
-        setSelected(acc);
-        await fetchStatement(acc, period);
+        if (cancelled) return;
+        if (loaded) {
+          const { info } = loaded;
+          setHasToken(true);
+          setClient(info);
+          setLastFetched(loaded.fetchedAt);
+          
+          const saved = getSelectedAccount();
+          const excluded = getExcludedAccounts();
+          const validSaved = saved === "all" || (info.accounts.some((a) => a.id === saved) && !excluded.includes(saved));
+          const acc = validSaved && saved ? saved : (info.accounts.length > 1 ? "all" : info.accounts[0]?.id || "all");
+          
+          setSelected(acc);
+          persistSelected(acc);
+          await fetchStatement(acc, period);
+        } else {
+          // Якщо токена немає в API або в ручному режимі — все одно завантажуємо вже збережені в базі операції
+          const acc = initialSelected || "all";
+          await fetchStatement(acc, period);
+        }
       } catch (e) {
         if (!cancelled) {
           setHasToken(true);
           setError((e as Error).message);
+          const acc = getSelectedAccount() || "all";
+          void fetchStatement(acc, period).catch(() => {});
         }
       } finally {
         if (!cancelled) {

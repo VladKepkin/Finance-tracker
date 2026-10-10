@@ -1,17 +1,19 @@
 "use client";
 
 import { useState } from "react";
-import { KeyRound, ShieldCheck, ExternalLink, Loader2 } from "lucide-react";
+import { KeyRound, ShieldCheck, ExternalLink, Loader2, Wallet } from "lucide-react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 
 export function TokenGate({
   onConnect,
+  onContinueManual,
   loading,
   error,
 }: {
   onConnect: (token: string) => void;
+  onContinueManual?: () => void;
   loading: boolean;
   error: string | null;
 }) {
@@ -61,6 +63,30 @@ export function TokenGate({
               {loading ? <Loader2 className="size-4 spin" /> : <ShieldCheck className="size-4" />}
               {loading ? "Підключення…" : "Підключити"}
             </Button>
+
+            {onContinueManual && (
+              <div className="space-y-2 pt-1">
+                <div className="relative flex py-1 items-center">
+                  <div className="flex-grow border-t border-border/60"></div>
+                  <span className="flex-shrink mx-3 text-xs text-muted-foreground">або</span>
+                  <div className="flex-grow border-t border-border/60"></div>
+                </div>
+
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="lg"
+                  className="w-full text-foreground/80 hover:text-foreground h-11"
+                  onClick={onContinueManual}
+                >
+                  <Wallet className="size-4 mr-2 text-primary" />
+                  Продовжити без Monobank (ручний режим)
+                </Button>
+                <p className="text-[11px] text-center text-muted-foreground">
+                  Ведення готівки, власних карток, витрат та лімітів вручну. Monobank можна підключити в будь-який момент.
+                </p>
+              </div>
+            )}
           </div>
 
           <div className="flex items-start gap-2 rounded-xl bg-secondary p-3 text-xs text-muted-foreground">

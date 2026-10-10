@@ -87,3 +87,65 @@ export function buildMetricsPayload(
 
   return { coverage, dailyMedian, weekday, monthly, anomalies, dailySeries };
 }
+
+export async function buildMetricsPayloadAsync(
+  userId: number,
+  accountId: string,
+  nowSeconds: number,
+  jarTitles?: readonly string[] | null
+): Promise<MetricsPayload> {
+  const { adapterListSyncStateForUser, adapterTimeBoundsTransactions, adapterQueryRangeTransactions } = await import(
+    "./data-adapter"
+  );
+  const syncRowsAll = await adapterListSyncStateForUser(userId);
+  const syncRows = syncRowsAll.filter((r) => r.account_id === accountId);
+  const bounds = await adapterTimeBoundsTransactions(userId, accountId);
+  const coverage = coverageFromSyncState(syncRows, bounds.samples);
+
+  const syncRow = syncRows[0];
+  const window = metricsWindow({
+    coveredFrom: syncRow?.covered_from ?? null,
+    coveredTo: syncRow?.covered_to ?? null,
+    nowSeconds,
+  });
+
+  const allTxs = window ? await adapterQueryRangeTransactions(userId, window.from, window.to) : [];
+  const txs = allTxs
+    .filter((t) => t.account_id === accountId)
+    .filter((t) => !isOwnJarTransfer(t.mcc, t.description, jarTitles));
+
+  const days = window ? dailyTotals(txs, window.from, window.to) : [];
+  const anomalies = detectAnomalies(days);
+  const clean = withoutAnomalies(days, anomalies);
+
+  const dailyConf =
+    coverage.samples === 0 || !window ? "insufficient" : confidenceFor(clean.length, DAILY_T);
+  const dailyMedian: Metric<number> = {
+    value: dailyConf === "insufficient" ? null : median(clean.map((d) => d.expense)),
+    coverage,
+    confidence: dailyConf,
+  };
+
+  const wd = weekdayBaselines(clean);
+  const minSamples = Math.min(...wd.map((w) => w.samples));
+  const wdConf = coverage.samples === 0 ? "insufficient" : confidenceFor(minSamples, WEEKDAY_T);
+  const weekday: Metric<WeekdayBaseline[]> = {
+    value: wdConf === "insufficient" ? null : wd,
+    coverage,
+    confidence: wdConf,
+  };
+
+  const months = window ? monthlyTotals(txs, window.from, window.to) : [];
+  const monthlyConf = confidenceFor(months.length, MONTHLY_T);
+  const monthly: Metric<Percentiles> = {
+    value: monthlyConf === "insufficient" ? null : monthlyPercentiles(months),
+    coverage,
+    confidence: monthlyConf,
+  };
+
+  const dailySeries: DaySpent[] = days
+    .slice(-DAILY_SERIES_WINDOW)
+    .map((d) => ({ date: d.date, spent: d.expense }));
+
+  return { coverage, dailyMedian, weekday, monthly, anomalies, dailySeries };
+}

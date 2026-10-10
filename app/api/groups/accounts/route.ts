@@ -1,12 +1,10 @@
 import { NextResponse } from "next/server";
 import { getSession } from "@/lib/session";
-import { db } from "@/lib/db";
 import {
-  shareAccount,
-  unshareAccount,
-  getSharedAccountsForUser,
-  isUserInGroup,
-} from "@/lib/repo/groups";
+  adapterShareAccount,
+  adapterUnshareAccount,
+  adapterGetSharedAccountsForUser,
+} from "@/lib/data-adapter";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -15,7 +13,7 @@ export async function GET() {
   const session = await getSession();
   if (!session) return NextResponse.json({ error: "Не авторизовано" }, { status: 401 });
 
-  const accounts = getSharedAccountsForUser(db(), session.userId);
+  const accounts = await adapterGetSharedAccountsForUser(session.userId);
   return NextResponse.json({ accounts });
 }
 
@@ -29,7 +27,7 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: "Потрібно вказати accountId та groupId" }, { status: 400 });
     }
 
-    shareAccount(db(), body.accountId, session.userId, body.groupId);
+    await adapterShareAccount(body.accountId, session.userId, body.groupId);
     return NextResponse.json({ ok: true });
   } catch (e) {
     return NextResponse.json({ error: (e as Error).message }, { status: 400 });
@@ -48,7 +46,7 @@ export async function DELETE(req: Request) {
       return NextResponse.json({ error: "Потрібно вказати accountId та groupId" }, { status: 400 });
     }
 
-    unshareAccount(db(), accountId, session.userId, groupId);
+    await adapterUnshareAccount(accountId, session.userId, groupId);
     return NextResponse.json({ ok: true });
   } catch (e) {
     return NextResponse.json({ error: (e as Error).message }, { status: 400 });

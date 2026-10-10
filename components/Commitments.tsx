@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import { Repeat, Check, X, Trash2, Plus, CreditCard, Banknote } from "lucide-react";
+import { Repeat, Check, X, Trash2, Plus, CreditCard, Banknote, UserCheck } from "lucide-react";
 import { formatMoney } from "@/lib/format";
 import type { Cadence } from "@/lib/metrics/cadence";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -16,6 +16,9 @@ import {
 } from "@/components/ui/select";
 import { currencyMeta } from "@/lib/monobank";
 import { cn } from "@/lib/utils";
+
+import type { CommitmentSettlement } from "@/lib/commitmentPayments";
+import type { CommitmentOverride, CommitmentOverridesMap } from "@/lib/storage";
 
 interface CommitmentRow {
   id: number;
@@ -43,7 +46,21 @@ function when(cadence: Cadence, anchorDay: number): string {
   return cadence === "weekly" ? `щотижня, ${WEEKDAYS[anchorDay]}` : `щомісяця, ${anchorDay}-го`;
 }
 
-export function CommitmentsCard({ base, onChanged }: { base: number; onChanged: () => void }) {
+export function CommitmentsCard({
+  base,
+  onChanged,
+  settlements,
+  commitmentOverrides,
+  onUpdateCommitmentOverride,
+  periodStart,
+}: {
+  base: number;
+  onChanged: () => void;
+  settlements?: Map<number, CommitmentSettlement>;
+  commitmentOverrides?: CommitmentOverridesMap;
+  onUpdateCommitmentOverride?: (commitmentId: number, override: CommitmentOverride | null) => void;
+  periodStart?: number;
+}) {
   const [items, setItems] = useState<CommitmentRow[] | null>(null);
   const [suggestions, setSuggestions] = useState<Suggestion[]>([]);
   const [error, setError] = useState<string | null>(null);
@@ -369,7 +386,121 @@ export function CommitmentsCard({ base, onChanged }: { base: number; onChanged: 
                     <div className="text-xs text-muted-foreground">{when(c.cadence, c.anchor_day)}</div>
                   </div>
                   <div className="flex shrink-0 items-center gap-2">
-                    <span className="tabular-nums font-semibold">{formatMoney(c.amount, c.currency)}</span>
+                    {(() => {
+                      const settlement = settlements?.get(c.id);
+                      const isPaid = settlement?.isPaid ?? false;
+                      const isExternal = settlement?.settledExternally ?? false;
+                      const hasPayments = (settlement?.paidCount ?? 0) > 0;
+                      const statusOverride = settlement?.statusOverride;
+
+                      if (isExternal) {
+                        return (
+                          <div className="flex flex-col items-end gap-0.5">
+                            <span className="tabular-nums font-semibold line-through text-muted-foreground text-xs">
+                              {formatMoney(c.amount, c.currency)}
+                            </span>
+                            <div className="flex items-center gap-1">
+                              <span className="inline-flex items-center gap-1 text-[11px] font-semibold text-sky-600 dark:text-sky-400">
+                                <UserCheck className="size-3" /> Оплачено сторонньо
+                              </span>
+                              <button
+                                type="button"
+                                onClick={() => onUpdateCommitmentOverride?.(c.id, null)}
+                                className="text-[10px] text-muted-foreground hover:text-foreground underline ml-0.5 cursor-pointer"
+                                title="Скасувати стороннє закриття"
+                              >
+                                (скасувати)
+                              </button>
+                            </div>
+                          </div>
+                        );
+                      }
+
+                      if (hasPayments) {
+                        const paidBase = settlement?.paidBase ?? 0;
+                        const isPartialPending = statusOverride === "partial_pending";
+                        const isUnderpaid = paidBase < c.amount;
+
+                        if (isPartialPending) {
+                          return (
+                            <div className="flex flex-col items-end gap-0.5">
+                              <span className="tabular-nums font-semibold text-xs text-foreground">
+                                {formatMoney(c.amount, c.currency)}
+                              </span>
+                              <span className="inline-flex items-center gap-1 text-[11px] font-semibold text-amber-600 dark:text-amber-400">
+                                Частково: {formatMoney(paidBase, base)}
+                              </span>
+                              <div className="flex items-center gap-1 text-[10px] text-muted-foreground">
+                                <span>резерв {formatMoney(settlement?.remainingReserve ?? 0, base)}</span>
+                                <button
+                                  type="button"
+                                  onClick={() => onUpdateCommitmentOverride?.(c.id, null)}
+                                  className="text-primary hover:underline font-medium cursor-pointer"
+                                  title="Закрити платіж повністю без резерву залишку"
+                                >
+                                  Закрити повністю
+                                </button>
+                              </div>
+                            </div>
+                          );
+                        }
+
+                        return (
+                          <div className="flex flex-col items-end gap-0.5">
+                            <span className="tabular-nums font-semibold line-through text-muted-foreground text-xs">
+                              {formatMoney(c.amount, c.currency)}
+                            </span>
+                            <span className="inline-flex items-center gap-1 text-[11px] font-semibold text-emerald-600 dark:text-emerald-400">
+                              <Check className="size-3" /> Сплачено {formatMoney(paidBase, base)}
+                            </span>
+                            {isUnderpaid && (
+                              <div className="flex items-center gap-1 text-[10px] text-muted-foreground">
+                                <span>покрито з балансу</span>
+                                <button
+                                  type="button"
+                                  onClick={() =>
+                                    onUpdateCommitmentOverride?.(c.id, {
+                                      periodStart: periodStart ?? 0,
+                                      status: "partial_pending",
+                                    })
+                                  }
+                                  className="text-muted-foreground hover:text-foreground hover:underline cursor-pointer"
+                                  title="Залишити залишок у резерві бюджету"
+                                >
+                                  (очікується залишок)
+                                </button>
+                              </div>
+                            )}
+                          </div>
+                        );
+                      }
+
+                      // No payments and not external: waiting
+                      return (
+                        <div className="flex flex-col items-end gap-0.5">
+                          <span className="tabular-nums font-semibold text-foreground">
+                            {formatMoney(c.amount, c.currency)}
+                          </span>
+                          <div className="flex items-center gap-1.5">
+                            <span className="text-[10px] text-muted-foreground">⏳ Очікує</span>
+                            <button
+                              type="button"
+                              onClick={() =>
+                                onUpdateCommitmentOverride?.(c.id, {
+                                  periodStart: periodStart ?? 0,
+                                  status: "settled_externally",
+                                  note: "Оплачено сторонньо",
+                                })
+                              }
+                              className="inline-flex items-center gap-0.5 text-[10px] font-medium text-primary hover:underline bg-primary/10 hover:bg-primary/20 px-1.5 py-0.5 rounded-md cursor-pointer transition-colors"
+                              title="Позначити, що платіж оплатив хтось інший або він покритий бонусами"
+                            >
+                              <UserCheck className="size-2.5" /> Хтось оплатив
+                            </button>
+                          </div>
+                        </div>
+                      );
+                    })()}
                     <Button
                       variant="ghost"
                       size="icon"
@@ -390,6 +521,23 @@ export function CommitmentsCard({ base, onChanged }: { base: number; onChanged: 
                   <span>Щомісяця загалом:</span>
                   <span className="tabular-nums font-bold">{formatMoney(monthly, base)}</span>
                 </div>
+                {(() => {
+                  let paidTotal = 0;
+                  if (settlements) {
+                    for (const s of settlements.values()) {
+                      if (s.isPaid) paidTotal += s.paidBase;
+                    }
+                  }
+                  if (paidTotal > 0) {
+                    return (
+                      <div className="flex items-center justify-between text-[11px] text-emerald-600 dark:text-emerald-400 font-medium">
+                        <span>✓ Вже сплачено за період:</span>
+                        <span className="tabular-nums font-bold">{formatMoney(paidTotal, base)}</span>
+                      </div>
+                    );
+                  }
+                  return null;
+                })()}
                 {(cardMonthly > 0 || cashMonthly > 0) && (
                   <div className="flex items-center justify-between text-[11px]">
                     <span className="text-muted-foreground">

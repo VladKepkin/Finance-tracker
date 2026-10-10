@@ -404,3 +404,8 @@ export function buildExportPayload(database: DB, params: ExportParams): MonthlyR
 export function generateMonthlyReport(database: DB, params: ExportParams): string {
   return buildMonthlyReport(buildExportPayload(database, params));
 }
+
+export async function generateMonthlyReportAsync(params: ExportParams): Promise<string> {
+  const { db } = await import("../db");
+  return generateMonthlyReport(db(), params);
+}

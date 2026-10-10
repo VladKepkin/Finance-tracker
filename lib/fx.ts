@@ -7,7 +7,7 @@ export interface CurrencyRate {
   rateCross?: number;
 }
 
-function directRate(rates: CurrencyRate[], a: number, b: number): number | null {
+function directRate(rates: readonly CurrencyRate[], a: number, b: number): number | null {
   const r = rates.find((x) => x.currencyCodeA === a && x.currencyCodeB === b);
   if (!r) return null;
   if (r.rateCross && r.rateCross > 0) return r.rateCross;
@@ -16,7 +16,7 @@ function directRate(rates: CurrencyRate[], a: number, b: number): number | null 
 }
 
 export function rateBetween(
-  rates: CurrencyRate[],
+  rates: readonly CurrencyRate[],
   from: number,
   to: number
 ): number | null {
@@ -32,7 +32,7 @@ export function convertMinor(
   minor: number,
   from: number,
   to: number,
-  rates: CurrencyRate[]
+  rates: readonly CurrencyRate[]
 ): number | null {
   if (from === to) return minor;
   const rate = rateBetween(rates, from, to);

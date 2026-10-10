@@ -16,6 +16,7 @@ const allowance: Allowance = {
   goalsBeforeIncome: [],
   overdueGoals: [],
   invalidGoals: [],
+  paidCommitments: [],
 };
 
 const healthy = {

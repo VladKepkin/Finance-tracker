@@ -15,11 +15,19 @@ import {
   ArrowLeftRight,
   Users,
   ShoppingBag,
+  Repeat,
 } from "lucide-react";
 import { Sheet } from "@/components/ui/sheet";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { formatMoney } from "@/lib/format";
 import { CATEGORIES, mccToCategory } from "@/lib/mcc";
 import { currencyMeta } from "@/lib/monobank";
@@ -52,6 +60,8 @@ export interface TransactionDetailData {
   overrideType?: TxOverrideType | null;
   classificationKind?: "expense" | "income" | "internal_transfer" | "shared_transit" | "ignored";
   classificationBadge?: { label: string; variant: "default" | "secondary" | "warning" | "outline" | "success" };
+  commitmentId?: number | null;
+  commitmentName?: string | null;
 }
 
 const JOY_LABELS: Record<number, string> = {
@@ -71,6 +81,8 @@ export function TransactionDetailsModal({
   onSaveNote,
   onDeleteCashEntry,
   onChangeOverride,
+  commitments,
+  onLinkCommitment,
 }: {
   item: TransactionDetailData | null;
   open: boolean;
@@ -80,6 +92,8 @@ export function TransactionDetailsModal({
   onSaveNote?: (id: string, note: string) => void;
   onDeleteCashEntry?: (id: string) => void;
   onChangeOverride?: (id: string, override: TxOverrideType | null) => void;
+  commitments?: { id: number; name: string; amount: number; currency: number }[];
+  onLinkCommitment?: (id: string, commitmentId: number | null, sourceType: "mono" | "cash") => void;
 }) {
   const [noteText, setNoteText] = useState("");
   const [noteSaved, setNoteSaved] = useState(false);
@@ -165,6 +179,11 @@ export function TransactionDetailsModal({
               <Badge variant="warning">Фейкова (не в ліміті)</Badge>
             ) : null}
             {item.isJarTransfer && <Badge variant="secondary">У власну банку</Badge>}
+            {item.commitmentName && (
+              <Badge variant="outline" className="border-primary/40 text-primary gap-1 font-medium">
+                🗓️ {item.commitmentName}
+              </Badge>
+            )}
             {item.cashbackAmount && item.cashbackAmount > 0 ? (
               <Badge variant="secondary" className="text-success font-medium">
                 +{formatMoney(item.cashbackAmount, item.currency)} кешбек
@@ -297,6 +316,62 @@ export function TransactionDetailsModal({
             </div>
           </div>
         ) : null}
+
+        {/* Прив'язка до регулярного платежу (Зобов'язання) */}
+        {onLinkCommitment && isExpense && commitments && commitments.length > 0 && (
+          <div className="rounded-2xl border bg-card p-3.5 space-y-2.5">
+            <div className="flex items-center justify-between">
+              <span className="text-xs font-semibold uppercase tracking-wider text-muted-foreground flex items-center gap-1.5">
+                <Repeat className="size-3.5 text-primary" /> Регулярне зобов'язання
+              </span>
+              {item.commitmentId ? (
+                <Badge variant="outline" className="text-xs border-primary/30 text-primary font-medium gap-1">
+                  <Check className="size-3 text-success" /> Прив'язано
+                </Badge>
+              ) : null}
+            </div>
+
+            <div className="flex items-center gap-2">
+              <Select
+                value={item.commitmentId ? String(item.commitmentId) : "none"}
+                onValueChange={(val) => {
+                  const cId = val === "none" ? null : Number(val);
+                  onLinkCommitment(item.id, cId, item.sourceType);
+                }}
+              >
+                <SelectTrigger className="h-9 text-xs flex-1">
+                  <SelectValue placeholder="Оберіть регулярний платіж…" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="none">— Не прив'язано (звичайна витрата) —</SelectItem>
+                  {commitments.map((c) => (
+                    <SelectItem key={c.id} value={String(c.id)}>
+                      🗓️ {c.name} ({formatMoney(c.amount, c.currency)})
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+
+              {item.commitmentId && (
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="sm"
+                  className="h-9 text-xs text-muted-foreground hover:text-destructive shrink-0"
+                  onClick={() => onLinkCommitment(item.id, null, item.sourceType)}
+                >
+                  Відв'язати
+                </Button>
+              )}
+            </div>
+
+            <p className="text-[11px] text-muted-foreground leading-relaxed">
+              {item.commitmentId
+                ? "✓ Зараховано як виконання регулярного платежу за цей період. Резерв у ліміті знято (без подвійного списання), а сума не спалює ваш денний ліміт."
+                : "Прив'яжіть цю витрату (оренда, комуналка, підписка), щоб зняти її резерв із бюджету та уникнути подвійного списання."}
+            </p>
+          </div>
+        )}
 
         {/* Joy Rating (Рейтинг радості) */}
         {isExpense && !item.isFake && onRate && (

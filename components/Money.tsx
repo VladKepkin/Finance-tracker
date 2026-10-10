@@ -1,5 +1,6 @@
 "use client";
 
+import { useState } from "react";
 import type { MonoAccount, MonoStatementItem } from "@/lib/monobank";
 import type { WalletEntry } from "@/lib/storage";
 import type { CashAccount } from "@/lib/cashAccounts";
@@ -8,6 +9,9 @@ import type { TxOverrideType } from "@/lib/transfers";
 import { Expenses } from "@/components/Expenses";
 import { WalletTab } from "@/components/WalletTab";
 import { Disclosure } from "@/components/ui/disclosure";
+import { StatementImportModal } from "@/components/StatementImportModal";
+
+import type { Period } from "@/lib/useMono";
 
 export function Money({
   statement,
@@ -32,6 +36,14 @@ export function Money({
   onChangeOverride,
   partnerKeywords,
   excludedAccounts,
+  commitments,
+  txCommitments,
+  onLinkCommitment,
+  period,
+  onChangePeriod,
+  selectedAccount,
+  onSelectAccount,
+  monoAccounts,
 }: {
   statement: MonoStatementItem[];
   accountCurrency: number;
@@ -55,7 +67,17 @@ export function Money({
   onChangeOverride?: (id: string, override: TxOverrideType | null) => void;
   partnerKeywords?: readonly string[];
   excludedAccounts?: readonly string[];
+  commitments?: { id: number; name: string; amount: number; currency: number }[];
+  txCommitments?: Record<string, number>;
+  onLinkCommitment?: (id: string, commitmentId: number | null, sourceType: "mono" | "cash") => void;
+  period?: Period;
+  onChangePeriod?: (p: Period) => void;
+  selectedAccount?: string;
+  onSelectAccount?: (id: string) => void;
+  monoAccounts?: MonoAccount[];
 }) {
+  const [importOpen, setImportOpen] = useState(false);
+
   const accountName = account
     ? account.maskedPan?.[0]
       ? `••${account.maskedPan[0].slice(-4)}`
@@ -83,6 +105,15 @@ export function Money({
           onChangeOverride={onChangeOverride}
           partnerKeywords={partnerKeywords}
           excludedAccounts={excludedAccounts}
+          commitments={commitments}
+          txCommitments={txCommitments}
+          onLinkCommitment={onLinkCommitment}
+          onOpenImport={() => setImportOpen(true)}
+          period={period}
+          onChangePeriod={onChangePeriod}
+          selectedAccount={selectedAccount}
+          onSelectAccount={onSelectAccount}
+          monoAccounts={monoAccounts}
         />
       </div>
       <div className="lg:col-span-5 xl:col-span-4 sticky top-6 space-y-4">
@@ -97,9 +128,19 @@ export function Money({
             onAccountsChange={onCashAccountsChange}
             lastUsedAccountId={lastUsedAccountId}
             onAccountUsed={onAccountUsed}
+            commitments={commitments}
           />
         </Disclosure>
       </div>
+
+      <StatementImportModal
+        open={importOpen}
+        onClose={() => setImportOpen(false)}
+        accounts={cashAccounts}
+        onAccountsChange={onCashAccountsChange}
+        wallet={wallet}
+        onWalletChange={onWalletChange}
+      />
     </div>
   );
 }

@@ -81,6 +81,8 @@ export function Dashboard({
   txOverrides,
   jarTitles,
   partnerKeywords,
+  commitments,
+  txCommitments,
 }: {
   account: MonoAccount | undefined;
   activeMonoAccounts?: MonoAccount[];
@@ -129,6 +131,8 @@ export function Dashboard({
   masked: boolean;
   onToggleMasked: () => void;
   onOpenEvaluator?: () => void;
+  commitments?: { id: number; name: string; amount: number; currency: number }[];
+  txCommitments?: Record<string, number>;
 }) {
   const [detailsOpen, setDetailsOpen] = useState(false);
   const cash = cashBalances(wallet);
@@ -254,6 +258,7 @@ export function Dashboard({
             lastUsedAccountId={lastUsedAccountId}
             onAccountUsed={onAccountUsed}
             onOpenEvaluator={onOpenEvaluator}
+            commitments={commitments}
           />
 
           <AccountsStrip
@@ -301,9 +306,24 @@ export function Dashboard({
                           masked={masked}
                           context={transferContext}
                           pairedIds={pairedIds}
+                          commitmentName={
+                            txCommitments?.[row.item.id]
+                              ? commitments?.find((c) => c.id === txCommitments[row.item.id])?.name
+                              : null
+                          }
                         />
                       ) : (
-                        <CashRecentRow key={row.key} entry={row.entry} accounts={cashAccounts} masked={masked} />
+                        <CashRecentRow
+                          key={row.key}
+                          entry={row.entry}
+                          accounts={cashAccounts}
+                          masked={masked}
+                          commitmentName={
+                            row.entry.commitmentId
+                              ? commitments?.find((c) => c.id === row.entry.commitmentId)?.name
+                              : null
+                          }
+                        />
                       )
                     )}
                   </div>
@@ -377,6 +397,7 @@ function RecentRow({
   masked,
   context,
   pairedIds,
+  commitmentName,
 }: {
   it: MonoStatementItem;
   cc: number;
@@ -384,6 +405,7 @@ function RecentRow({
   masked: boolean;
   context?: TransferContext;
   pairedIds?: Set<string>;
+  commitmentName?: string | null;
 }) {
   const c = mccToCategory(it.mcc, it.amount);
   const classification = context ? classifyTransaction(it, context, pairedIds) : null;
@@ -404,6 +426,11 @@ function RecentRow({
           <span>{c.label}</span>
           <span className="opacity-40">•</span>
           <span className="font-medium text-foreground/70">Картка</span>
+          {commitmentName && (
+            <span className="rounded-full px-1.5 py-0.2 text-[10px] font-medium border border-primary/40 bg-primary/10 text-primary">
+              🗓️ {commitmentName}
+            </span>
+          )}
           {classification?.badge && (
             <span
               className={cn(
@@ -444,10 +471,12 @@ function CashRecentRow({
   entry,
   accounts,
   masked,
+  commitmentName,
 }: {
   entry: WalletEntry;
   accounts: CashAccount[];
   masked: boolean;
+  commitmentName?: string | null;
 }) {
   let icon: React.ReactNode;
   let title: string;
@@ -528,10 +557,15 @@ function CashRecentRow({
       </div>
       <div className="min-w-0 flex-1">
         <div className="truncate text-sm font-medium">{title}</div>
-        <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
+        <div className="flex items-center gap-1.5 text-xs text-muted-foreground flex-wrap">
           <span>{subtitle}</span>
           <span className="opacity-40">•</span>
           <span className="font-medium text-foreground/70">Готівка</span>
+          {commitmentName && (
+            <span className="rounded-full px-1.5 py-0.2 text-[10px] font-medium border border-primary/40 bg-primary/10 text-primary">
+              🗓️ {commitmentName}
+            </span>
+          )}
         </div>
       </div>
       <div className="flex shrink-0 flex-col items-end gap-0.5">

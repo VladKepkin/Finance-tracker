@@ -1,6 +1,12 @@
+export type AccountType = "card" | "cash" | "bank_account";
+
 export interface CashAccount {
   id: string;
   name: string;
+  type?: AccountType;
+  maskedPan?: string;
+  currencyCode?: number;
+  bankName?: string;
 }
 
 export const DEFAULT_CASH_ACCOUNT_ID = "cash";
@@ -27,11 +33,24 @@ export function resolveAccountId(accountId: string | undefined, knownIds: Readon
 export function accountDisplay(
   accountId: string | undefined,
   accounts: readonly CashAccount[]
-): { name: string; orphaned: boolean } {
+): {
+  name: string;
+  orphaned: boolean;
+  type: AccountType;
+  maskedPan?: string;
+  bankName?: string;
+} {
   const knownIds = new Set(accounts.map((a) => a.id));
   const resolvedId = resolveAccountId(accountId, knownIds);
   const account = accounts.find((a) => a.id === resolvedId);
   const name = account?.name ?? DEFAULT_CASH_ACCOUNT_NAME;
   const orphaned = accountId !== undefined && !knownIds.has(accountId);
-  return { name, orphaned };
+  const type: AccountType = account?.type ?? (resolvedId === DEFAULT_CASH_ACCOUNT_ID ? "cash" : "card");
+  return {
+    name,
+    orphaned,
+    type,
+    maskedPan: account?.maskedPan,
+    bankName: account?.bankName,
+  };
 }

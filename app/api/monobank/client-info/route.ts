@@ -1,10 +1,13 @@
 import { NextResponse } from "next/server";
 import { monoFetch, MonoError, type MonoClientInfo, type MonoAccount } from "@/lib/monobank";
 import { getSession } from "@/lib/session";
-import { getMonoTokenEnc, db } from "@/lib/db";
+import {
+  adapterGetMonoTokenEnc,
+  adapterGetSharedAccountsForUser,
+  adapterGetLatestTxForAccount,
+} from "@/lib/data-adapter";
 import { decrypt } from "@/lib/crypto";
 import { clientInfoCache } from "@/lib/clientInfoCache";
-import { getSharedAccountsForUser } from "@/lib/repo/groups";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -13,9 +16,8 @@ export async function GET() {
   const session = await getSession();
   if (!session) return NextResponse.json({ error: "Не авторизовано" }, { status: 401 });
 
-  const database = db();
-  const enc = getMonoTokenEnc(session.userId);
-  const sharedAccounts = getSharedAccountsForUser(database, session.userId);
+  const enc = await adapterGetMonoTokenEnc(session.userId);
+  const sharedAccounts = await adapterGetSharedAccountsForUser(session.userId);
 
   if (!enc) {
     if (sharedAccounts.length === 0) {
@@ -34,9 +36,7 @@ export async function GET() {
           groupName: s.groupName,
         });
       } else {
-        const latestTx = database
-          .prepare("SELECT balance, currency_code FROM transactions WHERE account_id = ? ORDER BY time DESC LIMIT 1")
-          .get(s.accountId) as { balance: number; currency_code: number } | undefined;
+        const latestTx = await adapterGetLatestTxForAccount(s.accountId);
         accounts.push({
           id: s.accountId,
           sendId: "",
@@ -86,9 +86,7 @@ export async function GET() {
           groupName: s.groupName,
         });
       } else {
-        const latestTx = database
-          .prepare("SELECT balance, currency_code FROM transactions WHERE account_id = ? ORDER BY time DESC LIMIT 1")
-          .get(s.accountId) as { balance: number; currency_code: number } | undefined;
+        const latestTx = await adapterGetLatestTxForAccount(s.accountId);
         mergedAccounts.push({
           id: s.accountId,
           sendId: "",

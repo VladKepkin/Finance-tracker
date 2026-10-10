@@ -1,8 +1,6 @@
 import { NextResponse } from "next/server";
 import { getSession } from "@/lib/session";
-import { db } from "@/lib/db";
-import { queryPage } from "@/lib/repo/transactions";
-import { getAccessibleAccountIds } from "@/lib/repo/groups";
+import { adapterQueryPageTransactions, adapterGetAccessibleAccountIds } from "@/lib/data-adapter";
 import { withTelemetry } from "@/lib/telemetry";
 
 export const runtime = "nodejs";
@@ -25,9 +23,9 @@ export const GET = withTelemetry("/api/transactions", async function GET(req: Re
   const account = searchParams.get("account") ?? undefined;
   const scope = (searchParams.get("scope") as "all" | "personal" | "family") ?? "all";
 
-  const accessibleAccountIds = getAccessibleAccountIds(db(), session.userId);
+  const accessibleAccountIds = await adapterGetAccessibleAccountIds(session.userId);
 
-  const items = queryPage(db(), session.userId, {
+  const items = await adapterQueryPageTransactions(session.userId, {
     accountId: account && account !== "all" ? account : undefined,
     fromTime: from,
     toTime: to,

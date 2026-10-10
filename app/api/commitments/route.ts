@@ -1,7 +1,12 @@
 import { NextResponse } from "next/server";
 import { getSession } from "@/lib/session";
-import { db } from "@/lib/db";
-import { listActive, insert, update, deactivate, getById } from "@/lib/repo/commitments";
+import {
+  adapterListActiveCommitments,
+  adapterInsertCommitment,
+  adapterUpdateCommitment,
+  adapterDeactivateCommitment,
+  adapterGetCommitmentById,
+} from "@/lib/data-adapter";
 import { parseCreate, parsePatch } from "@/lib/commitmentInput";
 import { withTelemetry } from "@/lib/telemetry";
 
@@ -11,7 +16,8 @@ export const dynamic = "force-dynamic";
 export const GET = withTelemetry("/api/commitments", async function GET() {
   const session = await getSession();
   if (!session) return NextResponse.json({ error: "Не авторизовано" }, { status: 401 });
-  return NextResponse.json({ items: listActive(db(), session.userId) });
+  const items = await adapterListActiveCommitments(session.userId);
+  return NextResponse.json({ items });
 });
 
 export const POST = withTelemetry("/api/commitments", async function POST(req: Request) {
@@ -28,7 +34,7 @@ export const POST = withTelemetry("/api/commitments", async function POST(req: R
   const parsed = parseCreate(body);
   if (!parsed.ok) return NextResponse.json({ error: parsed.error }, { status: 400 });
 
-  const id = insert(db(), session.userId, parsed.value, Math.floor(Date.now() / 1000));
+  const id = await adapterInsertCommitment(session.userId, parsed.value, Math.floor(Date.now() / 1000));
   return NextResponse.json({ id });
 });
 
@@ -48,13 +54,13 @@ export const PATCH = withTelemetry("/api/commitments", async function PATCH(req:
   }
   const id = (body as { id: number }).id;
 
-  const existing = getById(db(), session.userId, id);
+  const existing = await adapterGetCommitmentById(session.userId, id);
   if (!existing) return NextResponse.json({ error: "Не знайдено" }, { status: 404 });
 
   const parsed = parsePatch(body, existing.cadence);
   if (!parsed.ok) return NextResponse.json({ error: parsed.error }, { status: 400 });
 
-  const ok = update(db(), session.userId, id, parsed.value);
+  const ok = await adapterUpdateCommitment(session.userId, id, parsed.value);
   if (!ok) return NextResponse.json({ error: "Не знайдено" }, { status: 404 });
   return NextResponse.json({ ok: true });
 });
@@ -66,7 +72,8 @@ export const DELETE = withTelemetry("/api/commitments", async function DELETE(re
   if (!Number.isInteger(id)) {
     return NextResponse.json({ error: "Не вказано id" }, { status: 400 });
   }
-  if (!deactivate(db(), session.userId, id)) {
+  const ok = await adapterDeactivateCommitment(session.userId, id);
+  if (!ok) {
     return NextResponse.json({ error: "Не знайдено" }, { status: 404 });
   }
   return NextResponse.json({ ok: true });

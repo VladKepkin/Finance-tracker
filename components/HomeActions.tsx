@@ -26,6 +26,7 @@ export function HomeActions({
   lastUsedAccountId,
   onAccountUsed,
   onOpenEvaluator,
+  commitments,
 }: {
   wallet: WalletEntry[];
   onChange: (list: WalletEntry[]) => void;
@@ -34,6 +35,7 @@ export function HomeActions({
   lastUsedAccountId: string;
   onAccountUsed: (id: string) => void;
   onOpenEvaluator?: () => void;
+  commitments?: { id: number; name: string; amount: number; currency: number }[];
 }) {
   const today = new Date().toISOString().slice(0, 10);
   const [open, setOpen] = useState<Exclude<Action, "evaluator"> | null>(null);
@@ -88,8 +90,9 @@ export function HomeActions({
               withCategory
               accounts={accounts}
               defaultAccountId={lastUsedAccountId}
-              onSubmit={({ amount, currency, source, date, category, accountId }) =>
-                add({ id: uid(), date, kind: "expense", amount, currency, source, category, accountId }, accountId)
+              commitments={commitments}
+              onSubmit={({ amount, currency, source, date, category, accountId, commitmentId }) =>
+                add({ id: uid(), date, kind: "expense", amount, currency, source, category, accountId, commitmentId }, accountId)
               }
             />
           )}

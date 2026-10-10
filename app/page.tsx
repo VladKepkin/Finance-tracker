@@ -47,8 +47,17 @@ import {
   setTxOverrides as persistTxOverrides,
   getPartnerKeywords,
   setPartnerKeywords as persistPartnerKeywords,
+  getTxCommitments,
+  setTxCommitments as persistTxCommitments,
+  getCommitmentOverrides,
+  setCommitmentOverrides as persistCommitmentOverrides,
+  getManualMode,
+  setManualMode as persistManualMode,
+  type CommitmentOverride,
+  type CommitmentOverridesMap,
   type TxOverrideType,
   type TxOverridesMap,
+  type TxCommitmentsMap,
   type WalletEntry,
   type WishItem,
 } from "@/lib/storage";
@@ -62,6 +71,7 @@ import {
   isEffectiveExpense,
   isEffectiveIncome,
 } from "@/lib/transfers";
+import { computeCommitmentSettlements } from "@/lib/commitmentPayments";
 import { cn } from "@/lib/utils";
 import { TokenGate } from "@/components/TokenGate";
 import { RefreshButton } from "@/components/RefreshButton";
@@ -130,6 +140,8 @@ const PERIODS: { key: Period; label: string }[] = [
   { key: "month", label: "Місяць" },
   { key: "prev", label: "Мин." },
   { key: "7d", label: "7д" },
+  { key: "year", label: "Рік" },
+  { key: "all", label: "Увесь час" },
 ];
 
 export default function Home() {
@@ -181,7 +193,7 @@ export default function Home() {
   const [hydrated, setHydrated] = useState(false);
   const [metrics, setMetrics] = useState<MetricsPayload | null>(null);
   const [rawCommitments, setRawCommitments] = useState<
-    { name: string; amount: number; currency: number; cadence: Cadence; anchorDay: number; source?: "card" | "cash" }[] | null
+    { id: number; name: string; amount: number; currency: number; cadence: Cadence; anchorDay: number; source?: "card" | "cash" }[] | null
   >(null);
   const [commitmentsError, setCommitmentsError] = useState<string | null>(null);
   const [rawSalaries, setRawSalaries] = useState<{ paidOn: string; amount: number; currency: number }[] | null>(
@@ -195,6 +207,11 @@ export default function Home() {
   const [excludedAccounts, setExcludedAccountsState] = useState<string[]>([]);
   const [txOverrides, setTxOverridesState] = useState<TxOverridesMap>({});
   const [partnerKeywords, setPartnerKeywordsState] = useState<string[]>([]);
+  const [txCommitments, setTxCommitmentsState] = useState<TxCommitmentsMap>({});
+  const [commitmentOverrides, setCommitmentOverridesState] = useState<CommitmentOverridesMap>(() =>
+    getCommitmentOverrides()
+  );
+  const [manualMode, setManualModeState] = useState(() => getManualMode());
 
   const [budgetScope, setBudgetScope] = useState<"personal" | "family">("personal");
 
@@ -267,6 +284,9 @@ export default function Home() {
       setExcludedAccountsState(getExcludedAccounts());
       setTxOverridesState(getTxOverrides());
       setPartnerKeywordsState(getPartnerKeywords());
+      setTxCommitmentsState(getTxCommitments());
+      setCommitmentOverridesState(getCommitmentOverrides());
+      setManualModeState(getManualMode());
       setHydrated(true);
     });
   }, []);
@@ -351,6 +371,52 @@ export default function Home() {
       persistFakeIds(nextFake);
     }
   };
+
+  const updateTxCommitment = useCallback((txId: string, commitmentId: number | null, sourceType: "mono" | "cash") => {
+    if (sourceType === "mono") {
+      setTxCommitmentsState((prev) => {
+        const next = { ...prev };
+        if (commitmentId === null) {
+          delete next[txId];
+        } else {
+          next[txId] = commitmentId;
+        }
+        persistTxCommitments(next);
+        return next;
+      });
+    } else {
+      setWalletState((prev) => {
+        const next = prev.map((w) => {
+          if (w.id !== txId) return w;
+          const copy = { ...w };
+          if (commitmentId === null) {
+            delete copy.commitmentId;
+          } else {
+            copy.commitmentId = commitmentId;
+          }
+          return copy;
+        });
+        persistWallet(next);
+        return next;
+      });
+    }
+  }, []);
+
+  const updateCommitmentOverride = useCallback(
+    (commitmentId: number, override: CommitmentOverride | null) => {
+      setCommitmentOverridesState((prev) => {
+        const next = { ...prev };
+        if (!override) {
+          delete next[commitmentId];
+        } else {
+          next[commitmentId] = override;
+        }
+        persistCommitmentOverrides(next);
+        return next;
+      });
+    },
+    []
+  );
 
   const account = state.client?.accounts.find((a) => a.id === state.selectedAccount);
   const accountCurrency = account?.currencyCode ?? 980;
@@ -440,11 +506,12 @@ export default function Home() {
         return;
       }
       const data = (await res.json()) as {
-        items: { name: string; amount: number; currency: number; cadence: Cadence; anchor_day: number; source?: "card" | "cash" }[];
+        items: { id: number; name: string; amount: number; currency: number; cadence: Cadence; anchor_day: number; source?: "card" | "cash" }[];
       };
       if (isCancelled?.()) return;
       setRawCommitments(
         data.items.map((c) => ({
+          id: c.id,
           name: c.name,
           amount: c.amount,
           currency: c.currency,
@@ -627,34 +694,82 @@ export default function Home() {
   const liquid = liquidResult.ok ? liquidResult.value : null;
   const liquidFxUnavailable = liquidResult.ok ? null : liquidResult.currency;
 
-  const commitmentsResult = useMemo(() => {
-    if (rawCommitments === null) return null;
-    const converted: AllowanceCommitment[] = [];
-    for (const c of rawCommitments) {
-      const amountBase = convertMinor(c.amount, c.currency, base, rates);
-      if (amountBase === null) return { ok: false as const, currency: c.currency };
-      converted.push({
-        name: c.name,
-        amountBase,
-        cadence: c.cadence,
-        anchorDay: c.anchorDay,
-        source: c.source ?? "card",
-      });
-    }
-    return { ok: true as const, commitments: converted };
-  }, [rawCommitments, base, rates]);
-
   const [nowSeconds, setNowSeconds] = useState(() => Math.floor(Date.now() / 1000));
   useEffect(() => {
     const id = setInterval(() => setNowSeconds(Math.floor(Date.now() / 1000)), 60_000);
     return () => clearInterval(id);
   }, []);
 
+  const periodBounds = useMemo(
+    () =>
+      schedule ? { start: incomePeriodStart(schedule, nowSeconds), end: incomePeriodEnd(schedule, nowSeconds) } : null,
+    [schedule, nowSeconds]
+  );
+
+  const currentPeriodBounds = useMemo(() => {
+    if (periodBounds) return periodBounds;
+    const d = new Date(nowSeconds * 1000);
+    const y = d.getUTCFullYear();
+    const m = d.getUTCMonth();
+    const start = Math.floor(Date.UTC(y, m, 1) / 1000);
+    const end = Math.floor(Date.UTC(y, m + 1, 0, 23, 59, 59) / 1000);
+    return { start, end };
+  }, [periodBounds, nowSeconds]);
+
+  const commitmentSettlementResult = useMemo(() => {
+    if (!rawCommitments) return null;
+    return computeCommitmentSettlements({
+      commitments: rawCommitments,
+      statement: state.statement,
+      wallet,
+      txCommitments,
+      commitmentOverrides,
+      periodStart: currentPeriodBounds.start,
+      periodEnd: currentPeriodBounds.end,
+      base,
+      rates,
+      accountCurrency,
+    });
+  }, [rawCommitments, state.statement, wallet, txCommitments, commitmentOverrides, currentPeriodBounds, base, rates, accountCurrency]);
+
+  const settlements = commitmentSettlementResult?.settlements;
+  const commitmentTxIds = commitmentSettlementResult?.commitmentTxIds ?? new Set<string>();
+  const commitmentWalletIds = commitmentSettlementResult?.commitmentWalletIds ?? new Set<string>();
+
+  const commitmentsResult = useMemo(() => {
+    if (rawCommitments === null) return null;
+    const converted: AllowanceCommitment[] = [];
+    for (const c of rawCommitments) {
+      const amountBase = convertMinor(c.amount, c.currency, base, rates);
+      if (amountBase === null) return { ok: false as const, currency: c.currency };
+      const settlement = settlements?.get(c.id);
+      const isPaid = settlement?.isPaid ?? false;
+      const paidBase = settlement?.paidBase;
+      const remainingReserve = settlement?.remainingReserve;
+      const settledExternally = settlement?.settledExternally;
+
+      converted.push({
+        id: c.id,
+        name: c.name,
+        amountBase,
+        cadence: c.cadence,
+        anchorDay: c.anchorDay,
+        source: c.source ?? "card",
+        paidInPeriod: isPaid,
+        paidBase,
+        remainingReserve,
+        settledExternally,
+      });
+    }
+    return { ok: true as const, commitments: converted };
+  }, [rawCommitments, settlements, base, rates]);
+
   const spentTodayResult = useMemo(() => {
     const todayStart = Math.floor(nowSeconds / 86_400) * 86_400;
     let total = 0;
     for (const it of state.statement) {
       if (!isEffectiveExpense(it, transferContext, pairedIds)) continue;
+      if (commitmentTxIds.has(it.id)) continue;
       if (it.time < todayStart || it.time >= todayStart + 86_400) continue;
       const cur = it.currencyCode ?? accountCurrency;
       const v = convertMinor(Math.abs(it.amount), cur, base, rates);
@@ -663,6 +778,7 @@ export default function Home() {
     }
     for (const e of wallet) {
       if (e.kind !== "expense") continue;
+      if (e.commitmentId || commitmentWalletIds.has(e.id)) continue;
       if (typeof e.amount !== "number") continue;
       const entryDayStart = Math.floor(new Date(e.date).getTime() / 1000 / 86_400) * 86_400;
       if (entryDayStart !== todayStart) continue;
@@ -672,15 +788,9 @@ export default function Home() {
       total += v;
     }
     return { ok: true as const, value: total };
-  }, [state.statement, transferContext, pairedIds, accountCurrency, base, rates, wallet, nowSeconds]);
+  }, [state.statement, transferContext, pairedIds, commitmentTxIds, commitmentWalletIds, accountCurrency, base, rates, wallet, nowSeconds]);
   const spentTodayBase = spentTodayResult.ok ? spentTodayResult.value : null;
   const spentTodayFxUnavailable = spentTodayResult.ok ? null : spentTodayResult.currency;
-
-  const periodBounds = useMemo(
-    () =>
-      schedule ? { start: incomePeriodStart(schedule, nowSeconds), end: incomePeriodEnd(schedule, nowSeconds) } : null,
-    [schedule, nowSeconds]
-  );
 
   const [periodStatement, setPeriodStatement] = useState<MonoStatementItem[] | null>(null);
   const [periodStatementError, setPeriodStatementError] = useState<string | null>(null);
@@ -1000,11 +1110,25 @@ export default function Home() {
 
   if (state.initializing) return <HomeSkeleton />;
 
-  if (!state.hasToken) {
-    return <TokenGate onConnect={connect} loading={state.loading} error={state.error} />;
+  if (!state.hasToken && !manualMode) {
+    return (
+      <TokenGate
+        onConnect={(token) => {
+          setManualModeState(false);
+          persistManualMode(false);
+          connect(token);
+        }}
+        onContinueManual={() => {
+          setManualModeState(true);
+          persistManualMode(true);
+        }}
+        loading={state.loading}
+        error={state.error}
+      />
+    );
   }
 
-  if (!state.client) {
+  if (!state.client && !manualMode) {
     const isTokenError = Boolean(
       state.error && (/токен|token|403|недійсн|невірн|авториз/i.test(state.error))
     );
@@ -1094,6 +1218,16 @@ export default function Home() {
                 onClick={() => setIsEditingToken(true)}
               >
                 <KeyRound className="size-4 mr-2" /> Змінити токен Monobank
+              </Button>
+              <Button
+                variant="ghost"
+                className="h-10 w-full rounded-2xl text-xs text-muted-foreground hover:text-foreground"
+                onClick={() => {
+                  setManualModeState(true);
+                  persistManualMode(true);
+                }}
+              >
+                Продовжити в ручному режимі (без Monobank)
               </Button>
             </div>
           )}
@@ -1325,6 +1459,8 @@ export default function Home() {
             txOverrides={txOverrides}
             jarTitles={jarTitles}
             partnerKeywords={partnerKeywords}
+            commitments={rawCommitments ?? undefined}
+            txCommitments={txCommitments}
           />
         )}
         {tab === "money" && (
@@ -1351,6 +1487,14 @@ export default function Home() {
             onChangeOverride={updateTxOverride}
             partnerKeywords={partnerKeywords}
             excludedAccounts={excludedAccounts}
+            commitments={rawCommitments ?? undefined}
+            txCommitments={txCommitments}
+            onLinkCommitment={updateTxCommitment}
+            period={state.period}
+            onChangePeriod={changePeriod}
+            selectedAccount={state.selectedAccount}
+            onSelectAccount={changeAccount}
+            monoAccounts={activeMonoAccounts}
           />
         )}
         {tab === "goals" && (
@@ -1444,6 +1588,11 @@ export default function Home() {
             jarTitles={jarTitles}
             excludedAccounts={excludedAccounts}
             onToggleExcludeAccount={toggleExcludeAccount}
+            settlements={settlements}
+            commitmentOverrides={commitmentOverrides}
+            onUpdateCommitmentOverride={updateCommitmentOverride}
+            periodStart={currentPeriodBounds.start}
+            onConnectMono={connect}
           />
         )}
       </main>

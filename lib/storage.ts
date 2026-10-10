@@ -17,6 +17,7 @@ export interface WalletEntry {
   source?: string;
   accountId?: string;
   category?: string;
+  commitmentId?: number;
   fromAmount?: number;
   fromCurrency?: number;
   toAmount?: number;
@@ -54,6 +55,9 @@ const SYNC_KEYS = [
   "excludedAccounts",
   "txOverrides",
   "partnerKeywords",
+  "txCommitments",
+  "commitmentOverrides",
+  "manualMode",
 ] as const;
 type SyncKey = (typeof SYNC_KEYS)[number];
 
@@ -111,6 +115,9 @@ const LEGACY_MAP: Record<SyncKey, string> = {
   excludedAccounts: "mt.excludedAccounts",
   txOverrides: "mt.txOverrides",
   partnerKeywords: "mt.partnerKeywords",
+  txCommitments: "mt.txCommitments",
+  commitmentOverrides: "mt.commitmentOverrides",
+  manualMode: "mt.manualMode",
 };
 
 function importLegacyLocal(server: Record<string, unknown>): void {
@@ -230,6 +237,37 @@ export const getPartnerKeywords = (): string[] => {
   return Array.isArray(v) ? (v.filter((x): x is string => typeof x === "string") as string[]) : [];
 };
 export const setPartnerKeywords = (keywords: string[]) => set("partnerKeywords", keywords);
+
+export type TxCommitmentsMap = Record<string, number>;
+
+export const getTxCommitments = (): TxCommitmentsMap => {
+  const v = get<unknown>("txCommitments", {});
+  if (v && typeof v === "object" && !Array.isArray(v)) {
+    return v as TxCommitmentsMap;
+  }
+  return {};
+};
+export const setTxCommitments = (map: TxCommitmentsMap) => set("txCommitments", map);
+
+export interface CommitmentOverride {
+  periodStart: number;
+  status: "settled_externally" | "fully_settled" | "partial_pending";
+  note?: string;
+  customCoveredAmount?: number;
+}
+export type CommitmentOverridesMap = Record<number, CommitmentOverride>;
+
+export const getCommitmentOverrides = (): CommitmentOverridesMap => {
+  const v = get<unknown>("commitmentOverrides", {});
+  if (v && typeof v === "object" && !Array.isArray(v)) {
+    return v as CommitmentOverridesMap;
+  }
+  return {};
+};
+export const setCommitmentOverrides = (map: CommitmentOverridesMap) => set("commitmentOverrides", map);
+
+export const getManualMode = (): boolean => Boolean(get<unknown>("manualMode", false));
+export const setManualMode = (v: boolean) => set("manualMode", v);
 
 export function uid(): string {
   return Math.random().toString(36).slice(2) + Date.now().toString(36);

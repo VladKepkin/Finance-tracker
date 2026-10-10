@@ -31,3 +31,22 @@ export function toStatusPayload(database: DB, userId: number): SyncStatusPayload
     })),
   };
 }
+
+export async function toStatusPayloadAsync(userId: number): Promise<SyncStatusPayload> {
+  const { adapterListSyncStateForUser, adapterTimeBoundsTransactions } = await import("./data-adapter");
+  const [syncRows, bounds] = await Promise.all([
+    adapterListSyncStateForUser(userId),
+    adapterTimeBoundsTransactions(userId),
+  ]);
+  return {
+    coverage: coverageFromSyncState(syncRows, bounds.samples),
+    accounts: syncRows.map((r) => ({
+      accountId: r.account_id,
+      coveredFrom: toDate(r.covered_from),
+      coveredTo: toDate(r.covered_to),
+      backfillDone: r.backfill_done === 1,
+      status: r.status,
+      error: r.error,
+    })),
+  };
+}

@@ -195,4 +195,79 @@ describe("computeAllowance", () => {
     expect(withGoal.overdueGoals).toEqual([]);
     expect(withGoal.invalidGoals).toEqual([]);
   });
+
+  it("сплачене в періоді зобов'язання (paidInPeriod) НЕ резервується вдруге", () => {
+    // Ситуація: Оренда 30 000 вже сплачена фактично (наприклад, 31 000 через коливання)
+    // Баланс (liquid) вже зменшився до 50 000
+    const a = computeAllowance({
+      liquid: 50_000,
+      commitments: [
+        {
+          name: "Оренда",
+          amountBase: 30_000,
+          cadence: "monthly",
+          anchorDay: 28,
+          paidInPeriod: true,
+          paidBase: 31_000,
+        },
+      ],
+      goals: [],
+      buffer: 0,
+      schedule: SCHEDULE,
+      nowSeconds: NOW,
+    })!;
+    // Резерв = 0, бо вже списано з ліквідності!
+    expect(a.reserved).toBe(0);
+    expect(a.available).toBe(50_000);
+    expect(a.dueBeforeIncome).toEqual([]);
+    expect(a.paidCommitments).toEqual([{ name: "Оренда", paidBase: 31_000 }]);
+  });
+
+  it("стороннє погашення (settledExternally) → резерв 0, відмітка в paidCommitments", () => {
+    const a = computeAllowance({
+      liquid: 50_000,
+      commitments: [
+        {
+          name: "Мобільний (роботодавець)",
+          amountBase: 320,
+          cadence: "monthly",
+          anchorDay: 28,
+          paidInPeriod: true,
+          paidBase: 0,
+          settledExternally: true,
+        },
+      ],
+      goals: [],
+      buffer: 0,
+      schedule: SCHEDULE,
+      nowSeconds: NOW,
+    })!;
+    expect(a.reserved).toBe(0);
+    expect(a.available).toBe(50_000);
+    expect(a.paidCommitments).toEqual([{ name: "Мобільний (роботодавець)", paidBase: 0, settledExternally: true }]);
+  });
+
+  it("часткова оплата із очікуванням залишку (remainingReserve) → резервує тільки залишок", () => {
+    const a = computeAllowance({
+      liquid: 50_000,
+      commitments: [
+        {
+          name: "Оренда",
+          amountBase: 10_000,
+          cadence: "monthly",
+          anchorDay: 28, // до доходу
+          paidInPeriod: false,
+          remainingReserve: 7_000, // сплачено 3 000, 7 000 очікується
+        },
+      ],
+      goals: [],
+      buffer: 0,
+      schedule: SCHEDULE,
+      nowSeconds: NOW,
+    })!;
+    // Резервується тільки залишок 7 000 замість 10 000!
+    expect(a.reserved).toBe(7_000);
+    expect(a.available).toBe(43_000);
+    expect(a.dueBeforeIncome).toEqual([{ name: "Оренда", totalBase: 7_000 }]);
+  });
 });

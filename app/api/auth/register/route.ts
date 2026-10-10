@@ -1,7 +1,6 @@
 import { NextResponse } from "next/server";
-import { getUserByUsername, createUser, db } from "@/lib/db";
+import { adapterGetUserByUsername, adapterCreateUser, adapterAcceptInvite } from "@/lib/data-adapter";
 import { setSessionCookie } from "@/lib/session";
-import { acceptInvite } from "@/lib/repo/groups";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -25,17 +24,17 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: "Пароль повинен містити хоча б 6 символів" }, { status: 400 });
   }
 
-  const existing = getUserByUsername(username);
+  const existing = await adapterGetUserByUsername(username);
   if (existing) {
     return NextResponse.json({ error: "Користувач із таким логіном уже існує" }, { status: 409 });
   }
 
-  const user = createUser(username, password);
+  const user = await adapterCreateUser(username, password);
 
   let groupJoined: { groupId: number; groupName: string } | null = null;
   if (inviteCode) {
     try {
-      groupJoined = acceptInvite(db(), inviteCode, user.id);
+      groupJoined = await adapterAcceptInvite(inviteCode, user.id);
     } catch (e) {
       console.warn(`[register] не вдалося приєднатися за кодом ${inviteCode}:`, (e as Error).message);
     }

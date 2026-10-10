@@ -1,0 +1,7 @@
+LOAD DATABASE
+     FROM sqlite://data/money.db
+     INTO postgresql://postgres:postgres@localhost:5432/finance_tracker
+
+WITH include drop, create tables, create indexes, reset sequences
+
+SET work_mem to '64MB', maintenance_work_mem to '512MB';

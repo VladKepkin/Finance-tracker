@@ -168,6 +168,23 @@ export function AllowanceCard({
               <span className="tabular-nums">−{formatMoney(allowance.reserved, base)}</span>
             </div>
           )}
+          {allowance.paidCommitments && allowance.paidCommitments.length > 0 && (
+            <div className="flex justify-between text-emerald-600 dark:text-emerald-400">
+              <span>
+                ✓ сплачено регулярних (
+                {allowance.paidCommitments
+                  .map((p) => (p.settledExternally ? `${p.name} (сторонньо)` : p.name))
+                  .join(", ")}
+                )
+              </span>
+              <span className="tabular-nums">
+                {formatMoney(
+                  allowance.paidCommitments.reduce((s, c) => s + c.paidBase, 0),
+                  base
+                )}
+              </span>
+            </div>
+          )}
           {savingsReserved > 0 && (
             <div className="flex justify-between">
               <span>− відкладено на заощадження з цієї зарплати</span>

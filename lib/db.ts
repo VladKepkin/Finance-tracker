@@ -306,6 +306,9 @@ const ALLOWED_KEYS = new Set([
   "excludedAccounts",
   "txOverrides",
   "partnerKeywords",
+  "txCommitments",
+  "commitmentOverrides",
+  "manualMode",
 ]);
 
 export function isAllowedKey(key: string): boolean {

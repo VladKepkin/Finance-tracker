@@ -30,6 +30,7 @@ export function MoneyForm({
   hint,
   accounts,
   defaultAccountId,
+  commitments,
   onSubmit,
 }: {
   today: string;
@@ -41,6 +42,7 @@ export function MoneyForm({
   hint?: string;
   accounts: CashAccount[];
   defaultAccountId: string;
+  commitments?: { id: number; name: string; amount: number; currency: number }[];
   onSubmit: (v: {
     amount: number;
     currency: number;
@@ -48,6 +50,7 @@ export function MoneyForm({
     date: string;
     category?: string;
     accountId: string;
+    commitmentId?: number;
   }) => void;
 }) {
   const [amount, setAmount] = useState("");
@@ -56,13 +59,23 @@ export function MoneyForm({
   const [date, setDate] = useState(today);
   const [category, setCategory] = useState("other");
   const [accountId, setAccountId] = useState(defaultAccountId);
+  const [commitmentId, setCommitmentId] = useState<number | null>(null);
 
   const submit = () => {
     const a = minor(amount);
     if (a <= 0) return;
-    onSubmit({ amount: a, currency, source: source || sourcePlaceholder, date, category, accountId });
+    onSubmit({
+      amount: a,
+      currency,
+      source: source || sourcePlaceholder,
+      date,
+      category,
+      accountId,
+      commitmentId: commitmentId ?? undefined,
+    });
     setAmount("");
     setSource("");
+    setCommitmentId(null);
   };
 
   return (
@@ -103,6 +116,51 @@ export function MoneyForm({
                     {c.emoji} {c.label}
                   </SelectItem>
                 ))}
+            </SelectContent>
+          </Select>
+        </div>
+      )}
+      {withCategory && commitments && commitments.length > 0 && (
+        <div className="space-y-1.5">
+          <div className="flex items-center justify-between">
+            <Label className="text-xs text-muted-foreground">Регулярний платіж (опціонально)</Label>
+            {commitmentId !== null && (
+              <button
+                type="button"
+                onClick={() => setCommitmentId(null)}
+                className="text-[10px] text-muted-foreground hover:text-foreground"
+              >
+                Скинути
+              </button>
+            )}
+          </div>
+          <Select
+            value={commitmentId !== null ? String(commitmentId) : "none"}
+            onValueChange={(val) => {
+              if (val === "none") {
+                setCommitmentId(null);
+              } else {
+                const cId = Number(val);
+                setCommitmentId(cId);
+                const found = commitments.find((c) => c.id === cId);
+                if (found) {
+                  if (!source.trim()) setSource(found.name);
+                  if (!amount.trim()) setAmount((found.amount / 100).toString());
+                  setCurrency(found.currency);
+                }
+              }
+            }}
+          >
+            <SelectTrigger className="w-full">
+              <SelectValue placeholder="— Не прив'язано —" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="none">— Не прив'язано —</SelectItem>
+              {commitments.map((c) => (
+                <SelectItem key={c.id} value={String(c.id)}>
+                  🗓️ {c.name} ({(c.amount / 100).toLocaleString("uk-UA")} {currencyMeta(c.currency).symbol})
+                </SelectItem>
+              ))}
             </SelectContent>
           </Select>
         </div>

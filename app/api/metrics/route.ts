@@ -1,7 +1,6 @@
 import { NextResponse } from "next/server";
 import { getSession } from "@/lib/session";
-import { db } from "@/lib/db";
-import { buildMetricsPayload } from "@/lib/metricsPayload";
+import { buildMetricsPayloadAsync } from "@/lib/metricsPayload";
 import { withTelemetry } from "@/lib/telemetry";
 
 export const runtime = "nodejs";
@@ -17,13 +16,12 @@ export const GET = withTelemetry("/api/metrics", async function GET(req: Request
 
   const jarTitles = searchParams.getAll("jarTitle");
 
-  return NextResponse.json(
-    buildMetricsPayload(
-      db(),
-      session.userId,
-      account,
-      Math.floor(Date.now() / 1000),
-      jarTitles.length > 0 ? jarTitles : null
-    )
+  const payload = await buildMetricsPayloadAsync(
+    session.userId,
+    account,
+    Math.floor(Date.now() / 1000),
+    jarTitles.length > 0 ? jarTitles : null
   );
+
+  return NextResponse.json(payload);
 });

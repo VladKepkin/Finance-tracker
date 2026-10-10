@@ -10,7 +10,8 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "bench": "tsx scripts/benchmark.ts",
-    "bench:unit": "vitest bench --run"
+    "bench:unit": "vitest bench --run",
+    "migrate:pg": "tsx scripts/migrate-sqlite-to-pg.ts"
   },
   "dependencies": {
     "@fontsource-variable/onest": "^5.3.1",
@@ -29,6 +30,7 @@
     "jose": "^6.2.3",
     "lucide-react": "0.474.0",
     "next": "^15.5.19",
+    "pg": "^8.23.1",
     "react": "19.0.0",
     "react-dom": "19.0.0",
     "recharts": "2.15.0",
@@ -39,6 +41,7 @@
     "@types/autocannon": "^7.12.7",
     "@types/better-sqlite3": "^7.6.13",
     "@types/node": "22.12.0",
+    "@types/pg": "^8.23.1",
     "@types/react": "19.0.8",
     "@types/react-dom": "19.0.3",
     "autocannon": "^8.0.0",

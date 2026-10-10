@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
-import { getUserByUsername, verifyPassword } from "@/lib/db";
+import { verifyPassword } from "@/lib/db";
+import { adapterGetUserByUsername } from "@/lib/data-adapter";
 import { setSessionCookie } from "@/lib/session";
 import { withTelemetry } from "@/lib/telemetry";
 
@@ -20,7 +21,7 @@ export const POST = withTelemetry("/api/auth/login", async function POST(req: Re
     return NextResponse.json({ error: "Вкажіть логін і пароль" }, { status: 400 });
   }
 
-  const user = getUserByUsername(username);
+  const user = await adapterGetUserByUsername(username);
   if (!user || !verifyPassword(password, user.password_hash)) {
     return NextResponse.json({ error: "Невірний логін або пароль" }, { status: 401 });
   }

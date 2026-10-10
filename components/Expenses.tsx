@@ -1,12 +1,13 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import { Search, EyeOff, Eye, Star, CreditCard, Banknote, X, SlidersHorizontal, ChevronDown } from "lucide-react";
-import type { MonoStatementItem } from "@/lib/monobank";
+import { Search, EyeOff, Eye, Star, CreditCard, Banknote, X, SlidersHorizontal, ChevronDown, UploadCloud } from "lucide-react";
+import type { MonoStatementItem, MonoAccount } from "@/lib/monobank";
 import type { WalletEntry } from "@/lib/storage";
 import { type CashAccount, accountDisplay } from "@/lib/cashAccounts";
 import { mccToCategory, CATEGORIES } from "@/lib/mcc";
-import { formatMoney } from "@/lib/format";
+import { formatMoney, pluralUk } from "@/lib/format";
+import type { Period } from "@/lib/useMono";
 import { Card, CardContent } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
@@ -48,6 +49,8 @@ export interface UnifiedItem {
   overrideType?: TxOverrideType | null;
   classificationKind?: "expense" | "income" | "internal_transfer" | "shared_transit" | "ignored";
   classificationBadge?: { label: string; variant: "default" | "secondary" | "warning" | "outline" | "success" };
+  commitmentId?: number | null;
+  commitmentName?: string | null;
 }
 
 function dayLabel(unix: number): string {
@@ -78,6 +81,15 @@ export function Expenses({
   onChangeOverride,
   partnerKeywords,
   excludedAccounts,
+  commitments,
+  txCommitments,
+  onLinkCommitment,
+  onOpenImport,
+  period,
+  onChangePeriod,
+  selectedAccount,
+  onSelectAccount,
+  monoAccounts,
 }: {
   statement: MonoStatementItem[];
   accountCurrency: number;
@@ -96,6 +108,15 @@ export function Expenses({
   onChangeOverride?: (id: string, override: TxOverrideType | null) => void;
   partnerKeywords?: readonly string[];
   excludedAccounts?: readonly string[];
+  commitments?: { id: number; name: string; amount: number; currency: number }[];
+  txCommitments?: Record<string, number>;
+  onLinkCommitment?: (id: string, commitmentId: number | null, sourceType: "mono" | "cash") => void;
+  onOpenImport?: () => void;
+  period?: Period;
+  onChangePeriod?: (p: Period) => void;
+  selectedAccount?: string;
+  onSelectAccount?: (id: string) => void;
+  monoAccounts?: MonoAccount[];
 }) {
   const [query, setQuery] = useState("");
   const [sourceFilter, setSourceFilter] = useState<"all" | "mono" | "cash">("all");
@@ -138,9 +159,13 @@ export function Expenses({
         overrideType: txOverrides?.[it.id] ?? null,
         classificationKind: classification.kind,
         classificationBadge: classification.badge,
+        commitmentId: txCommitments?.[it.id] ?? null,
+        commitmentName: txCommitments?.[it.id]
+          ? commitments?.find((c) => c.id === txCommitments[it.id])?.name ?? null
+          : null,
       };
     });
-  }, [statement, accountCurrency, accountName, fakeIds, ratings, txNotes, jarTitles, txOverrides, excludedAccounts, partnerKeywords, pairedIds]);
+  }, [statement, accountCurrency, accountName, fakeIds, ratings, txNotes, jarTitles, txOverrides, excludedAccounts, partnerKeywords, pairedIds, txCommitments, commitments]);
 
   const cashItems = useMemo<UnifiedItem[]>(() => {
     if (!wallet || wallet.length === 0) return [];
@@ -205,9 +230,13 @@ export function Expenses({
         note,
         cashKind: e.kind,
         cashEntryId: e.id,
+        commitmentId: e.commitmentId ?? null,
+        commitmentName: e.commitmentId
+          ? commitments?.find((c) => c.id === e.commitmentId)?.name ?? null
+          : null,
       };
     });
-  }, [wallet, cashAccounts, accountCurrency, ratings, txNotes]);
+  }, [wallet, cashAccounts, accountCurrency, ratings, txNotes, commitments]);
 
   const allItems = useMemo(() => {
     const list = [...monoItems, ...cashItems];
@@ -354,6 +383,20 @@ export function Expenses({
                 <span className="flex size-2 rounded-full bg-primary ring-2 ring-background" />
               )}
             </Button>
+
+            {onOpenImport && (
+              <Button
+                type="button"
+                variant="outline"
+                onClick={onOpenImport}
+                className="h-10 px-3 rounded-xl gap-1.5 font-medium shrink-0 border-border/80 hover:bg-card"
+                title="Імпорт банківської виписки CSV"
+                aria-label="Імпорт банківської виписки CSV"
+              >
+                <UploadCloud className="size-4 text-primary shrink-0" />
+                <span className="hidden sm:inline text-xs">Імпорт CSV</span>
+              </Button>
+            )}
           </div>
 
           {/* Якщо фільтри згорнуті, але є активні або пошук - показуємо компактні теги */}
@@ -515,15 +558,95 @@ export function Expenses({
                   })}
                 </div>
               </div>
+
+              {/* Вибір періоду */}
+              {onChangePeriod && (
+                <div className="space-y-1.5 pt-1 border-t border-border/40">
+                  <div className="text-[11px] font-medium text-muted-foreground">Період виписки:</div>
+                  <div className="flex flex-wrap items-center gap-1.5">
+                    {(
+                      [
+                        { key: "month", label: "Поточний місяць" },
+                        { key: "prev", label: "Минулий" },
+                        { key: "7d", label: "7 днів" },
+                        { key: "year", label: "Цей рік" },
+                        { key: "all", label: "Увесь час (всі операції)" },
+                      ] as const
+                    ).map((p) => (
+                      <button
+                        key={p.key}
+                        type="button"
+                        onClick={() => onChangePeriod(p.key)}
+                        className={cn(
+                          "px-3 py-1 rounded-full text-xs font-medium transition-all",
+                          period === p.key
+                            ? "bg-primary text-primary-foreground font-semibold shadow-xs"
+                            : "bg-secondary text-muted-foreground hover:text-foreground"
+                        )}
+                      >
+                        {p.label}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {/* Вибір картки Monobank */}
+              {onSelectAccount && monoAccounts && monoAccounts.length > 1 && (
+                <div className="space-y-1.5 pt-1 border-t border-border/40">
+                  <div className="text-[11px] font-medium text-muted-foreground">Картка Monobank:</div>
+                  <div className="flex flex-wrap items-center gap-1.5">
+                    <button
+                      type="button"
+                      onClick={() => onSelectAccount("all")}
+                      className={cn(
+                        "px-3 py-1 rounded-full text-xs font-medium transition-all",
+                        selectedAccount === "all" || !selectedAccount
+                          ? "bg-primary text-primary-foreground font-semibold shadow-xs"
+                          : "bg-secondary text-muted-foreground hover:text-foreground"
+                      )}
+                    >
+                      Усі картки разом
+                    </button>
+                    {monoAccounts.map((a) => (
+                      <button
+                        key={a.id}
+                        type="button"
+                        onClick={() => onSelectAccount(a.id)}
+                        className={cn(
+                          "flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-medium transition-all",
+                          selectedAccount === a.id
+                            ? "bg-primary text-primary-foreground font-semibold shadow-xs"
+                            : "bg-secondary text-muted-foreground hover:text-foreground"
+                        )}
+                      >
+                        <CreditCard className="size-3" />
+                        <span>{a.maskedPan?.[0] ? `•• ${a.maskedPan[0].slice(-4)}` : a.type}</span>
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              )}
             </div>
           )}
 
           {/* Плашка підсумку за період */}
           <div className="flex items-center justify-between rounded-xl bg-secondary/70 px-3.5 py-2 text-sm">
-            <span className="text-muted-foreground text-xs sm:text-sm">
-              Витрат за вибіркою ({filtered.length}{" "}
-              {filtered.length === 1 ? "операція" : "операцій"}):
-            </span>
+            <div className="flex items-center gap-2">
+              <span className="text-muted-foreground text-xs sm:text-sm">
+                Витрат за вибіркою ({filtered.length}{" "}
+                {pluralUk(filtered.length, "операція", "операції", "операцій")}):
+              </span>
+              {onChangePeriod && period !== "all" && (
+                <button
+                  type="button"
+                  onClick={() => onChangePeriod("all")}
+                  className="text-[11px] text-primary hover:underline font-medium hidden sm:inline"
+                >
+                  (за весь час →)
+                </button>
+              )}
+            </div>
             <span className="font-bold tabular-nums font-display tracking-tight text-foreground">
               −{formatMoney(periodTotal, accountCurrency)}
             </span>
@@ -597,6 +720,16 @@ export function Expenses({
         onSaveNote={handleSaveNote}
         onDeleteCashEntry={onDeleteCashEntry}
         onChangeOverride={onChangeOverride}
+        commitments={commitments}
+        onLinkCommitment={(id, cId, sType) => {
+          if (onLinkCommitment) {
+            onLinkCommitment(id, cId, sType);
+            if (selectedTx && selectedTx.id === id) {
+              const cName = cId ? commitments?.find((c) => c.id === cId)?.name ?? null : null;
+              setSelectedTx({ ...selectedTx, commitmentId: cId, commitmentName: cName });
+            }
+          }
+        }}
       />
     </div>
   );
@@ -694,6 +827,11 @@ function UnifiedRow({
           {it.isJarTransfer && !it.classificationBadge && (
             <Badge variant="secondary" className="shrink-0 py-0 text-[10px]">
               у банку
+            </Badge>
+          )}
+          {it.commitmentName && (
+            <Badge variant="outline" className="shrink-0 py-0 text-[10px] gap-1 border-primary/40 text-primary font-medium">
+              🗓️ {it.commitmentName}
             </Badge>
           )}
           {it.note && (

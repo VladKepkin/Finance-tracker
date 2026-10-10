@@ -3,11 +3,16 @@ import { occurrencesBetween, type Cadence } from "./cadence";
 import { goalsReserve, type AllowanceGoal } from "./goals";
 
 export interface AllowanceCommitment {
+  id?: number;
   name: string;
   amountBase: number;
   cadence: Cadence;
   anchorDay: number;
   source?: "card" | "cash";
+  paidInPeriod?: boolean;
+  paidBase?: number;
+  remainingReserve?: number;
+  settledExternally?: boolean;
 }
 
 export interface Allowance {
@@ -20,6 +25,7 @@ export interface Allowance {
   available: number;
   shortfall: boolean;
   dueBeforeIncome: { name: string; totalBase: number; source?: "card" | "cash" }[];
+  paidCommitments: { name: string; paidBase: number; source?: "card" | "cash"; settledExternally?: boolean }[];
   goalsReserved: number;
   goalsBeforeIncome: { name: string; reservedBase: number }[];
   overdueGoals: string[];
@@ -41,13 +47,29 @@ export function computeAllowance(input: {
   const daysToIncome = daysUntilIncome(schedule, nowSeconds);
 
   const dueBeforeIncome: { name: string; totalBase: number; source?: "card" | "cash" }[] = [];
+  const paidCommitments: { name: string; paidBase: number; source?: "card" | "cash"; settledExternally?: boolean }[] = [];
   let reserved = 0;
   for (const c of commitments) {
+    if (c.paidInPeriod) {
+      const item: { name: string; paidBase: number; source?: "card" | "cash"; settledExternally?: boolean } = {
+        name: c.name,
+        paidBase: c.paidBase ?? c.amountBase,
+      };
+      if (c.source) item.source = c.source;
+      if (c.settledExternally) item.settledExternally = true;
+      paidCommitments.push(item);
+      continue;
+    }
+
     const times = occurrencesBetween(c.cadence, c.anchorDay, nowSeconds, periodEnd);
     if (times === 0) continue;
-    const sum = c.amountBase * times;
+    const baseToReserve = c.remainingReserve !== undefined ? c.remainingReserve : c.amountBase;
+    const sum = baseToReserve * times;
     reserved += sum;
-    const item: { name: string; totalBase: number; source?: "card" | "cash" } = { name: c.name, totalBase: sum };
+    const item: { name: string; totalBase: number; source?: "card" | "cash" } = {
+      name: c.name,
+      totalBase: sum,
+    };
     if (c.source) item.source = c.source;
     dueBeforeIncome.push(item);
   }
@@ -71,6 +93,7 @@ export function computeAllowance(input: {
     available,
     shortfall,
     dueBeforeIncome,
+    paidCommitments,
     goalsReserved,
     goalsBeforeIncome,
     overdueGoals,

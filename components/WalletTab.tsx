@@ -11,6 +11,8 @@ import {
   ArrowDownToLine,
   ArrowUpFromLine,
   Plus,
+  Wallet,
+  Landmark,
 } from "lucide-react";
 import type { MonoAccount } from "@/lib/monobank";
 import { currencyMeta } from "@/lib/monobank";
@@ -37,6 +39,7 @@ export function WalletTab({
   onAccountsChange,
   lastUsedAccountId,
   onAccountUsed,
+  commitments,
 }: {
   wallet: WalletEntry[];
   onChange: (list: WalletEntry[]) => void;
@@ -47,6 +50,7 @@ export function WalletTab({
   onAccountsChange: (list: CashAccount[]) => void;
   lastUsedAccountId: string;
   onAccountUsed: (id: string) => void;
+  commitments?: { id: number; name: string; amount: number; currency: number }[];
 }) {
   const today = new Date().toISOString().slice(0, 10);
   const [kind, setKind] = useState<WalletKind>("income");
@@ -162,8 +166,9 @@ export function WalletTab({
               withCategory
               accounts={accounts}
               defaultAccountId={lastUsedAccountId}
-              onSubmit={({ amount, currency, source, date, category, accountId }) => {
-                add({ id: uid(), date, kind: "expense", amount, currency, source, category, accountId });
+              commitments={commitments}
+              onSubmit={({ amount, currency, source, date, category, accountId, commitmentId }) => {
+                add({ id: uid(), date, kind: "expense", amount, currency, source, category, accountId, commitmentId });
                 onAccountUsed(accountId);
               }}
             />
@@ -240,7 +245,7 @@ export function WalletTab({
           {[...wallet]
             .sort((a, b) => b.date.localeCompare(a.date))
             .map((e) => (
-              <WalletRow key={e.id} entry={e} accounts={accounts} onRemove={() => remove(e.id)} />
+              <WalletRow key={e.id} entry={e} accounts={accounts} onRemove={() => remove(e.id)} commitments={commitments} />
             ))}
         </CardContent>
       </Card>
@@ -257,10 +262,12 @@ export function WalletRow({
   entry,
   accounts,
   onRemove,
+  commitments,
 }: {
   entry: WalletEntry;
   accounts: CashAccount[];
   onRemove: () => void;
+  commitments?: { id: number; name: string }[];
 }) {
   let icon: React.ReactNode;
   let title: string;
@@ -349,14 +356,21 @@ export function WalletRow({
       <div className="flex size-10 shrink-0 items-center justify-center rounded-full bg-secondary text-lg">{icon}</div>
       <div className="min-w-0 flex-1">
         <div className="truncate text-sm font-medium">{title}</div>
-        <div className="truncate text-xs text-muted-foreground">
-          {new Date(entry.date).toLocaleDateString("uk-UA", {
-            day: "numeric",
-            month: "short",
-            year: entry.date.slice(0, 4) === String(new Date().getFullYear()) ? undefined : "numeric",
-          })}
-          {" · "}
-          {accountTag}
+        <div className="truncate text-xs text-muted-foreground flex items-center gap-1.5 flex-wrap">
+          <span>
+            {new Date(entry.date).toLocaleDateString("uk-UA", {
+              day: "numeric",
+              month: "short",
+              year: entry.date.slice(0, 4) === String(new Date().getFullYear()) ? undefined : "numeric",
+            })}
+            {" · "}
+            {accountTag}
+          </span>
+          {entry.commitmentId && (
+            <span className="inline-flex items-center gap-0.5 rounded px-1.5 py-0.2 bg-primary/10 text-primary text-[10px] font-medium">
+              🗓️ {commitments?.find((c) => c.id === entry.commitmentId)?.name || "Регулярний платіж"}
+            </span>
+          )}
         </div>
       </div>
       <div className="shrink-0 whitespace-nowrap">{right}</div>
@@ -440,7 +454,7 @@ function CashAccountsPanel({
   return (
     <Card>
       <CardHeader>
-        <CardTitle className="text-sm">Рахунки готівки</CardTitle>
+        <CardTitle className="text-sm">Рахунки та картки</CardTitle>
       </CardHeader>
       <CardContent className="space-y-3">
         {accounts.map((a) => {
@@ -453,6 +467,10 @@ function CashAccountsPanel({
           const currencies = Object.entries(balances).filter(([, v]) => Math.abs(v) > 0);
           const locked = usedIds.has(a.id);
           const isDefault = a.id === DEFAULT_CASH_ACCOUNT_ID;
+          const isCard = a.type === "card";
+          const isBank = a.type === "bank_account";
+          const Icon = isCard ? CreditCard : isBank ? Landmark : Wallet;
+
           return (
             <div key={a.id} className="rounded-lg border p-3">
               <div className="flex items-center justify-between gap-2">
@@ -466,12 +484,32 @@ function CashAccountsPanel({
                     className="h-8"
                   />
                 ) : (
-                  <button
-                    className="truncate text-left text-sm font-medium"
-                    onClick={() => startRename(a)}
-                  >
-                    {a.name}
-                  </button>
+                  <div className="flex items-center gap-2 min-w-0">
+                    <span
+                      className={cn(
+                        "flex size-6 shrink-0 items-center justify-center rounded-full text-xs",
+                        isCard ? "bg-primary/10 text-primary" : "bg-secondary text-muted-foreground"
+                      )}
+                    >
+                      <Icon className="size-3.5" />
+                    </span>
+                    <button
+                      className="truncate text-left text-sm font-medium hover:underline"
+                      onClick={() => startRename(a)}
+                    >
+                      {a.name}
+                    </button>
+                    {isCard && (
+                      <span className="rounded-full bg-primary/10 px-1.5 py-0.2 text-[10px] text-primary font-medium shrink-0">
+                        {a.bankName || "Картка"} {a.maskedPan ? `••${a.maskedPan}` : ""}
+                      </span>
+                    )}
+                    {isBank && (
+                      <span className="rounded-full bg-secondary px-1.5 py-0.2 text-[10px] text-muted-foreground font-medium shrink-0">
+                        {a.bankName || "IBAN"}
+                      </span>
+                    )}
+                  </div>
                 )}
                 {!isDefault && (
                   <Button
