@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { CreditCard, Wallet, Plus, Check, Landmark, UploadCloud } from "lucide-react";
+import { CreditCard, Wallet, Plus, Check, Landmark, UploadCloud, Download } from "lucide-react";
 import type { MonoAccount } from "@/lib/monobank";
 import { currencyMeta } from "@/lib/monobank";
 import { type WalletEntry, uid } from "@/lib/storage";
@@ -128,20 +128,35 @@ export function AccountsStrip({
 
   return (
     <section className="space-y-3">
-      <div className="flex items-center justify-between px-1">
+      <div className="flex items-center justify-between px-1 flex-wrap gap-2">
         <h2 className="text-[17px] font-semibold">Мої рахунки</h2>
-        <Button
-          variant="outline"
-          size="sm"
-          onClick={() => {
-            setImportTargetId(undefined);
-            setImportModalOpen(true);
-          }}
-          className="h-8 gap-1.5 text-xs rounded-full px-3 font-medium bg-card/60 hover:bg-card border-border/80"
-        >
-          <UploadCloud className="size-3.5 text-primary" />
-          Імпорт виписки
-        </Button>
+        <div className="flex items-center gap-1.5">
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => {
+              const acc = selectedMonoId || "all";
+              window.open(`/api/transactions/export?account=${encodeURIComponent(acc)}`, "_blank");
+            }}
+            className="h-8 gap-1.5 text-xs rounded-full px-3 font-medium bg-card/60 hover:bg-card border-border/80"
+            title="Завантажити виписку в форматі CSV"
+          >
+            <Download className="size-3.5 text-primary" />
+            Експорт CSV
+          </Button>
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => {
+              setImportTargetId(undefined);
+              setImportModalOpen(true);
+            }}
+            className="h-8 gap-1.5 text-xs rounded-full px-3 font-medium bg-card/60 hover:bg-card border-border/80"
+          >
+            <UploadCloud className="size-3.5 text-primary" />
+            Імпорт виписки
+          </Button>
+        </div>
       </div>
       <div className="no-scrollbar -mx-4 flex snap-x snap-mandatory gap-3 overflow-x-auto px-4 pb-2 md:mx-0 md:px-0 md:grid md:grid-cols-2 lg:grid-cols-3 md:gap-3 md:overflow-visible">
         {visibleMono.length > 1 && (
