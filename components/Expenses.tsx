@@ -1,7 +1,7 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import { Search, EyeOff, Eye, Star, CreditCard, Banknote, X, SlidersHorizontal, ChevronDown, UploadCloud } from "lucide-react";
+import { Search, EyeOff, Eye, Star, CreditCard, Banknote, X, SlidersHorizontal, ChevronDown, UploadCloud, Download } from "lucide-react";
 import type { MonoStatementItem, MonoAccount } from "@/lib/monobank";
 import type { WalletEntry } from "@/lib/storage";
 import { type CashAccount, accountDisplay } from "@/lib/cashAccounts";
@@ -382,6 +382,21 @@ export function Expenses({
               {hasActiveFilters && !filtersOpen && (
                 <span className="flex size-2 rounded-full bg-primary ring-2 ring-background" />
               )}
+            </Button>
+
+            <Button
+              type="button"
+              variant="outline"
+              onClick={() => {
+                const acc = selectedAccount || "all";
+                window.open(`/api/transactions/export?account=${encodeURIComponent(acc)}`, "_blank");
+              }}
+              className="h-10 px-3 rounded-xl gap-1.5 font-medium shrink-0 border-border/80 hover:bg-card"
+              title="Експорт банківської виписки CSV"
+              aria-label="Експорт банківської виписки CSV"
+            >
+              <Download className="size-4 text-primary shrink-0" />
+              <span className="hidden sm:inline text-xs">Експорт CSV</span>
             </Button>
 
             {onOpenImport && (
