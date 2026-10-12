@@ -1,12 +1,38 @@
 import { currencyMeta } from "./monobank";
 
+const ukMoneyFormatter = new Intl.NumberFormat("uk-UA", {
+  minimumFractionDigits: 2,
+  maximumFractionDigits: 2,
+});
+
+const ukWholeFormatter = new Intl.NumberFormat("uk-UA", {
+  maximumFractionDigits: 0,
+});
+
+const ukShort1 = new Intl.NumberFormat("uk-UA", {
+  maximumFractionDigits: 1,
+});
+
+const ukShort0 = new Intl.NumberFormat("uk-UA", {
+  maximumFractionDigits: 0,
+});
+
+const ukDateFormatter = new Intl.DateTimeFormat("uk-UA", {
+  day: "2-digit",
+  month: "short",
+});
+
+const ukDateTimeFormatter = new Intl.DateTimeFormat("uk-UA", {
+  day: "2-digit",
+  month: "short",
+  hour: "2-digit",
+  minute: "2-digit",
+});
+
 export function formatMoney(minor: number, currencyCode = 980): string {
   const { symbol, code } = currencyMeta(currencyCode);
   const value = minor / 100;
-  const formatted = new Intl.NumberFormat("uk-UA", {
-    minimumFractionDigits: 2,
-    maximumFractionDigits: 2,
-  }).format(value);
+  const formatted = ukMoneyFormatter.format(value);
   return symbol ? `${formatted} ${symbol}` : `${formatted} ${code}`;
 }
 
@@ -14,26 +40,18 @@ export function formatMoneyShort(minor: number, currencyCode = 980): string {
   const { symbol } = currencyMeta(currencyCode);
   const value = Math.abs(minor) / 100;
   let out: string;
-  if (value >= 1_000_000) out = `${(value / 1_000_000).toLocaleString("uk-UA", { maximumFractionDigits: 1 })} млн`;
-  else if (value >= 1_000) out = `${(value / 1_000).toLocaleString("uk-UA", { maximumFractionDigits: 1 })} тис`;
-  else out = value.toLocaleString("uk-UA", { maximumFractionDigits: 0 });
+  if (value >= 1_000_000) out = `${ukShort1.format(value / 1_000_000)} млн`;
+  else if (value >= 1_000) out = `${ukShort1.format(value / 1_000)} тис`;
+  else out = ukShort0.format(value);
   return `${out} ${symbol}`;
 }
 
 export function formatDate(unixSeconds: number): string {
-  return new Date(unixSeconds * 1000).toLocaleDateString("uk-UA", {
-    day: "2-digit",
-    month: "short",
-  });
+  return ukDateFormatter.format(new Date(unixSeconds * 1000));
 }
 
 export function formatDateTime(unixSeconds: number): string {
-  return new Date(unixSeconds * 1000).toLocaleString("uk-UA", {
-    day: "2-digit",
-    month: "short",
-    hour: "2-digit",
-    minute: "2-digit",
-  });
+  return ukDateTimeFormatter.format(new Date(unixSeconds * 1000));
 }
 
 export function formatPercent(value: number): string {
@@ -54,7 +72,8 @@ export function moneyParts(
 ): { negative: boolean; whole: string; fraction: string; symbol: string } {
   const { symbol, code } = currencyMeta(currencyCode);
   const abs = Math.abs(minor);
-  const whole = new Intl.NumberFormat("uk-UA", { maximumFractionDigits: 0 }).format(Math.floor(abs / 100));
+  const whole = ukWholeFormatter.format(Math.floor(abs / 100));
   const fraction = `,${String(abs % 100).padStart(2, "0")}`;
   return { negative: minor < 0, whole, fraction, symbol: symbol || code };
 }
+

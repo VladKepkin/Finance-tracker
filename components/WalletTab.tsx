@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useMemo, memo } from "react";
 import {
   Trash2,
   Banknote,
@@ -29,6 +29,23 @@ import { Input } from "@/components/ui/input";
 import { MoneyForm, ConvertForm, TransferForm } from "@/components/WalletForms";
 import { cn } from "@/lib/utils";
 
+const shortDateUk = new Intl.DateTimeFormat("uk-UA", {
+  day: "numeric",
+  month: "short",
+});
+
+const fullDateUk = new Intl.DateTimeFormat("uk-UA", {
+  day: "numeric",
+  month: "short",
+  year: "numeric",
+});
+
+function formatWalletDate(dateStr: string): string {
+  const d = new Date(dateStr);
+  const isThisYear = dateStr.slice(0, 4) === String(new Date().getFullYear());
+  return isThisYear ? shortDateUk.format(d) : fullDateUk.format(d);
+}
+
 export function WalletTab({
   wallet,
   onChange,
@@ -54,6 +71,16 @@ export function WalletTab({
 }) {
   const today = new Date().toISOString().slice(0, 10);
   const [kind, setKind] = useState<WalletKind>("income");
+  const [visibleLimit, setVisibleLimit] = useState(20);
+
+  const sortedWallet = useMemo(() => {
+    return [...wallet].sort((a, b) => b.date.localeCompare(a.date));
+  }, [wallet]);
+
+  const displayedWallet = useMemo(() => {
+    return sortedWallet.slice(0, visibleLimit);
+  }, [sortedWallet, visibleLimit]);
+
 
   const cash = cashBalances(wallet);
   const cashCur = Object.entries(cash).filter(([, v]) => Math.abs(v) > 0);
@@ -242,11 +269,31 @@ export function WalletTab({
           {wallet.length === 0 && (
             <p className="p-6 text-center text-sm text-muted-foreground">Поки немає записів.</p>
           )}
-          {[...wallet]
-            .sort((a, b) => b.date.localeCompare(a.date))
-            .map((e) => (
-              <WalletRow key={e.id} entry={e} accounts={accounts} onRemove={() => remove(e.id)} commitments={commitments} />
-            ))}
+          {displayedWallet.map((e) => (
+            <WalletRow key={e.id} entry={e} accounts={accounts} onRemove={() => remove(e.id)} commitments={commitments} />
+          ))}
+          {wallet.length > visibleLimit && (
+            <div className="p-3 text-center bg-secondary/30 flex items-center justify-center gap-2">
+              <Button
+                variant="ghost"
+                size="sm"
+                className="text-xs text-muted-foreground hover:text-foreground h-8"
+                onClick={() => setVisibleLimit((v) => v + 30)}
+              >
+                Показати ще (показано {visibleLimit} з {wallet.length})
+              </Button>
+              {wallet.length - visibleLimit > 30 && (
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  className="text-xs text-muted-foreground hover:text-foreground h-8"
+                  onClick={() => setVisibleLimit(wallet.length)}
+                >
+                  Усі
+                </Button>
+              )}
+            </div>
+          )}
         </CardContent>
       </Card>
 
@@ -258,7 +305,7 @@ export function WalletTab({
   );
 }
 
-export function WalletRow({
+export const WalletRow = memo(function WalletRow({
   entry,
   accounts,
   onRemove,
@@ -358,11 +405,7 @@ export function WalletRow({
         <div className="truncate text-sm font-medium">{title}</div>
         <div className="truncate text-xs text-muted-foreground flex items-center gap-1.5 flex-wrap">
           <span>
-            {new Date(entry.date).toLocaleDateString("uk-UA", {
-              day: "numeric",
-              month: "short",
-              year: entry.date.slice(0, 4) === String(new Date().getFullYear()) ? undefined : "numeric",
-            })}
+            {formatWalletDate(entry.date)}
             {" · "}
             {accountTag}
           </span>
@@ -379,7 +422,7 @@ export function WalletRow({
       </Button>
     </div>
   );
-}
+});
 
 function Seg({
   active,
