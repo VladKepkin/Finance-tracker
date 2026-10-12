@@ -62,9 +62,9 @@ jobs:
         run: |
           docker compose -f docker-compose.dev.yml up -d --build --remove-orphans
 
-      - name: Cleanup old Docker images
+      - name: Cleanup old Docker images (keep latest 3)
         run: |
-          docker image prune -f
+          docker images -f "dangling=true" --format "{{.CreatedAt}}\t{{.ID}}" | sort -r | awk '{print $NF}' | tail -n +4 | xargs -r docker rmi -f || true
 
   deploy-prod:
     name: Deploy to Production Environment
@@ -95,6 +95,6 @@ jobs:
         run: |
           docker compose -f docker-compose.yml up -d --build --remove-orphans
 
-      - name: Cleanup old Docker images
+      - name: Cleanup old Docker images (keep latest 3)
         run: |
-          docker image prune -f
+          docker images -f "dangling=true" --format "{{.CreatedAt}}\t{{.ID}}" | sort -r | awk '{print $NF}' | tail -n +4 | xargs -r docker rmi -f || true
