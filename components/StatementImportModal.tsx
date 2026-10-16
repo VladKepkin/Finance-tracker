@@ -102,11 +102,44 @@ export function StatementImportModal({
   const minDate = dates[0] ?? "";
   const maxDate = dates[dates.length - 1] ?? "";
 
-  const handleImport = () => {
-    let targetId = selectedAccountId;
+  const detectedAccountNames = Array.from(
+    new Set(parsedItems.map((it) => it.accountName).filter((n): n is string => Boolean(n && n.trim())))
+  );
 
-    let updatedAccounts = accounts;
-    if (isCreatingAccount) {
+  const handleImport = () => {
+    let updatedAccounts = [...accounts];
+    const accountNameToId = new Map<string, string>();
+    for (const acc of updatedAccounts) {
+      accountNameToId.set(acc.name.toLowerCase().trim(), acc.id);
+    }
+
+    let fallbackAccountId = selectedAccountId;
+
+    if (detectedAccountNames.length > 0) {
+      let createdAny = false;
+      for (const rawName of detectedAccountNames) {
+        const cleanName = rawName.trim();
+        const lower = cleanName.toLowerCase();
+        if (!accountNameToId.has(lower)) {
+          const isCash = lower.includes("готівка") || lower.includes("cash");
+          const isMono = lower.includes("моно") || lower.includes("mono");
+          const isPrivat = lower.includes("приват") || lower.includes("privat");
+          const newAcc: CashAccount = {
+            id: uid(),
+            name: cleanName,
+            type: isCash ? "cash" : "card",
+            bankName: isMono ? "Monobank" : isPrivat ? "ПриватБанк" : undefined,
+            currencyCode: 980,
+          };
+          updatedAccounts.push(newAcc);
+          accountNameToId.set(lower, newAcc.id);
+          createdAny = true;
+        }
+      }
+      if (createdAny) {
+        onAccountsChange(updatedAccounts);
+      }
+    } else if (isCreatingAccount) {
       const name = newAccountName.trim() || "Імпортована картка";
       const newAcc: CashAccount = {
         id: uid(),
@@ -115,9 +148,9 @@ export function StatementImportModal({
         bankName: bankType === "monobank" ? "Monobank" : bankType === "privatbank" ? "ПриватБанк" : undefined,
         currencyCode: 980,
       };
-      targetId = newAcc.id;
-      updatedAccounts = [...accounts, newAcc];
+      updatedAccounts.push(newAcc);
       onAccountsChange(updatedAccounts);
+      fallbackAccountId = newAcc.id;
     }
 
     // Deduplication key set: accountId + date + amount + kind + description/source
@@ -127,6 +160,11 @@ export function StatementImportModal({
 
     const newEntries: WalletEntry[] = [];
     for (const it of parsedItems) {
+      let targetId = fallbackAccountId;
+      if (it.accountName && accountNameToId.has(it.accountName.toLowerCase().trim())) {
+        targetId = accountNameToId.get(it.accountName.toLowerCase().trim())!;
+      }
+
       const key = `${targetId}_${it.date}_${it.amount}_${it.kind}_${it.description}`;
       if (existingKeys.has(key)) continue; // skip duplicates
 
@@ -240,56 +278,84 @@ export function StatementImportModal({
                   </div>
                 </div>
 
-                <div className="space-y-2 pt-1">
-                  <label className="text-xs font-medium text-foreground block">Зарахувати операції на рахунок:</label>
-                  <div className="flex gap-2">
-                    <Button
-                      type="button"
-                      variant={!isCreatingAccount ? "default" : "outline"}
-                      size="sm"
-                      className="flex-1 rounded-xl text-xs h-9"
-                      onClick={() => setIsCreatingAccount(false)}
-                    >
-                      Існуючий рахунок
-                    </Button>
-                    <Button
-                      type="button"
-                      variant={isCreatingAccount ? "default" : "outline"}
-                      size="sm"
-                      className="flex-1 rounded-xl text-xs h-9"
-                      onClick={() => setIsCreatingAccount(true)}
-                    >
-                      <Plus className="size-3.5 mr-1" /> Створити нову картку
-                    </Button>
-                  </div>
-
-                  {!isCreatingAccount ? (
-                    <select
-                      value={selectedAccountId}
-                      onChange={(e) => setSelectedAccountId(e.target.value)}
-                      className="w-full h-10 px-3 rounded-xl border border-border bg-background text-xs font-medium focus:outline-none focus:ring-1 focus:ring-primary"
-                    >
-                      {accounts.map((acc) => (
-                        <option key={acc.id} value={acc.id}>
-                          {acc.type === "card" ? "💳 " : "💵 "}
-                          {acc.name} {acc.maskedPan ? `(•• ${acc.maskedPan})` : ""}
-                        </option>
-                      ))}
-                    </select>
-                  ) : (
-                    <div className="space-y-1.5 pt-1">
-                      <Input
-                        value={newAccountName}
-                        onChange={(e) => setNewAccountName(e.target.value)}
-                        placeholder="Назва нової картки (напр. Чорна Моно)"
-                        className="h-10 text-xs rounded-xl"
-                      />
-                      <p className="text-[11px] text-muted-foreground">
-                        Буде створено нову картку в списку ваших рахунків з цими операціями.
-                      </p>
+                {detectedAccountNames.length > 0 ? (
+                  <div className="rounded-2xl p-3 bg-primary/10 border border-primary/20 space-y-2">
+                    <div className="flex items-center gap-1.5 text-xs font-semibold text-primary">
+                      <CreditCard className="size-3.5" />
+                      Виявлено прив'язку до рахунків у виписці ({detectedAccountNames.length})
                     </div>
-                  )}
-                </div>
+                    <div className="flex flex-wrap gap-1.5">
+                      {detectedAccountNames.map((accName) => {
+                        const exists = accounts.some(
+                          (a) => a.name.toLowerCase().trim() === accName.toLowerCase().trim()
+                        );
+                        return (
+                          <Badge
+                            key={accName}
+                            variant={exists ? "secondary" : "outline"}
+                            className="text-[11px] font-normal"
+                          >
+                            {accName} {!exists && "✨ новий"}
+                          </Badge>
+                        );
+                      })}
+                    </div>
+                    <p className="text-[11px] text-muted-foreground">
+                      Операції буде автоматично розподілено за цими рахунками. Якщо рахунку ще немає в списку, його буде створено автоматично.
+                    </p>
+                  </div>
+                ) : (
+                  <div className="space-y-2 pt-1">
+                    <label className="text-xs font-medium text-foreground block">Зарахувати операції на рахунок:</label>
+                    <div className="flex gap-2">
+                      <Button
+                        type="button"
+                        variant={!isCreatingAccount ? "default" : "outline"}
+                        size="sm"
+                        className="flex-1 rounded-xl text-xs h-9"
+                        onClick={() => setIsCreatingAccount(false)}
+                      >
+                        Існуючий рахунок
+                      </Button>
+                      <Button
+                        type="button"
+                        variant={isCreatingAccount ? "default" : "outline"}
+                        size="sm"
+                        className="flex-1 rounded-xl text-xs h-9"
+                        onClick={() => setIsCreatingAccount(true)}
+                      >
+                        <Plus className="size-3.5 mr-1" /> Створити нову картку
+                      </Button>
+                    </div>
+
+                    {!isCreatingAccount ? (
+                      <select
+                        value={selectedAccountId}
+                        onChange={(e) => setSelectedAccountId(e.target.value)}
+                        className="w-full h-10 px-3 rounded-xl border border-border bg-background text-xs font-medium focus:outline-none focus:ring-1 focus:ring-primary"
+                      >
+                        {accounts.map((acc) => (
+                          <option key={acc.id} value={acc.id}>
+                            {acc.type === "card" ? "💳 " : "💵 "}
+                            {acc.name} {acc.maskedPan ? `(•• ${acc.maskedPan})` : ""}
+                          </option>
+                        ))}
+                      </select>
+                    ) : (
+                      <div className="space-y-1.5 pt-1">
+                        <Input
+                          value={newAccountName}
+                          onChange={(e) => setNewAccountName(e.target.value)}
+                          placeholder="Назва нової картки (напр. Чорна Моно)"
+                          className="h-10 text-xs rounded-xl"
+                        />
+                        <p className="text-[11px] text-muted-foreground">
+                          Буде створено нову картку в списку ваших рахунків з цими операціями.
+                        </p>
+                      </div>
+                    )}
+                  </div>
+                )}
 
                 <div className="pt-2 flex gap-2">
                   <Button

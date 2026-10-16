@@ -1,15 +1,20 @@
-import { db, getMonoTokenEnc, getUserByUsername, getAllUsersWithToken, type DB } from "../db";
 import { decrypt } from "../crypto";
 import { monoFetch, type MonoClientInfo, type MonoStatementItem } from "../monobank";
 import type { CurrencyRate } from "../fx";
 import { createRateLimiter, type RateLimiter } from "./rateLimiter";
 import {
-  backfillAccount,
-  syncRecent,
+  backfillAccountAdapter,
+  syncRecentAdapter,
   DEFAULT_SYNC_OPTIONS,
   type StatementFetcher,
 } from "./statementSync";
-import { upsertDaily, hasDate } from "../repo/fxRates";
+import {
+  adapterGetMonoTokenEnc,
+  adapterGetAllUsersWithToken,
+  adapterGetUserByUsername,
+  adapterHasDateFx,
+  adapterUpsertDailyFxRates,
+} from "../data-adapter";
 
 const SYNC_INTERVAL_MS = 15 * 60_000;
 
@@ -47,8 +52,8 @@ export function isSchedulerStarted(): boolean {
   return state().started;
 }
 
-function tokenFor(userId: number): string | null {
-  const enc = getMonoTokenEnc(userId);
+async function tokenFor(userId: number): Promise<string | null> {
+  const enc = await adapterGetMonoTokenEnc(userId);
   return enc ? decrypt(enc) : null;
 }
 
@@ -67,18 +72,20 @@ async function limited<T>(userId: number, path: string, token: string): Promise<
   });
 }
 
-export async function runOnce(database: DB, userId: number): Promise<void> {
+export async function runOnce(userIdOrDb: number | unknown, maybeUserId?: number): Promise<void> {
+  const userId = typeof userIdOrDb === "number" ? userIdOrDb : maybeUserId!;
   const s = state();
   if (s.runningUsers.has(userId)) return;
   s.runningUsers.add(userId);
   try {
-    const token = tokenFor(userId);
+    const token = await tokenFor(userId);
     if (!token) return;
 
     const today = new Date().toISOString().slice(0, 10);
-    if (!hasDate(database, today)) {
+    const hasToday = await adapterHasDateFx(today);
+    if (!hasToday) {
       const rates = await limited<CurrencyRate[]>(userId, "/bank/currency", token);
-      upsertDaily(database, today, rates);
+      await adapterUpsertDailyFxRates(today, rates);
     }
 
     const info = await limited<MonoClientInfo>(userId, "/personal/client-info", token);
@@ -90,14 +97,14 @@ export async function runOnce(database: DB, userId: number): Promise<void> {
 
     for (const acc of info.accounts) {
       try {
-        await syncRecent(database, userId, acc.id, fetcher, opts);
+        await syncRecentAdapter(userId, acc.id, fetcher, opts);
       } catch (e) {
         console.error(`[sync] syncRecent(${acc.id}) — помилка:`, (e as Error).message);
       }
     }
     for (const acc of info.accounts) {
       try {
-        await backfillAccount(database, userId, acc.id, fetcher, opts);
+        await backfillAccountAdapter(userId, acc.id, fetcher, opts);
       } catch (e) {
         console.error(`[sync] backfillAccount(${acc.id}) — помилка:`, (e as Error).message);
       }
@@ -109,17 +116,17 @@ export async function runOnce(database: DB, userId: number): Promise<void> {
 
 async function tick(): Promise<void> {
   try {
-    const users = getAllUsersWithToken(db());
+    const users = await adapterGetAllUsersWithToken();
     if (users.length === 0) {
-      const user = getUserByUsername(process.env.APP_USERNAME || "admin");
+      const user = await adapterGetUserByUsername(process.env.APP_USERNAME || "admin");
       if (user && user.mono_token) {
-        await runOnce(db(), user.id);
+        await runOnce(user.id);
       }
       return;
     }
     for (const user of users) {
       try {
-        await runOnce(db(), user.id);
+        await runOnce(user.id);
       } catch (e) {
         console.error(`[sync] прохід для ${user.username} завершився помилкою:`, (e as Error).message);
       }

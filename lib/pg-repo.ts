@@ -460,6 +460,20 @@ export async function clearRatingPg(userId: number, txId: string): Promise<boole
   return (res.rowCount ?? 0) > 0;
 }
 
+export async function listAllRatingsPg(
+  userId: number
+): Promise<{ tx_id: string; score: number; created_at: number }[]> {
+  const res = await queryPg<{ tx_id: string; score: number; created_at: number }>(
+    "SELECT tx_id, score, created_at FROM ratings WHERE user_id = $1 ORDER BY created_at ASC",
+    [userId]
+  );
+  return res.rows;
+}
+
+export async function clearAllRatingsPg(userId: number): Promise<void> {
+  await queryPg("DELETE FROM ratings WHERE user_id = $1", [userId]);
+}
+
 // --- FX Rates ---
 
 export async function upsertDailyFxRatesPg(date: string, rates: CurrencyRate[]): Promise<number> {
@@ -564,7 +578,7 @@ export async function setSyncStateCoveredToPg(userId: number, accountId: string,
 }
 
 export async function markSyncStateBackfillDonePg(userId: number, accountId: string): Promise<void> {
-  await queryPg("UPDATE sync_state SET backfill_done = 1 WHERE user_id = $2 AND account_id = $3", [
+  await queryPg("UPDATE sync_state SET backfill_done = 1 WHERE user_id = $1 AND account_id = $2", [
     userId,
     accountId,
   ]);

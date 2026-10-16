@@ -51,6 +51,19 @@ export const GET = withTelemetry("/api/transactions/export", async function GET(
   const toTime = Number(searchParams.get("to")) || Math.floor(Date.now() / 1000);
 
   const accessibleAccountIds = await adapterGetAccessibleAccountIds(session.userId);
+  const kv = await adapterGetAllKV(session.userId);
+
+  // Build account name map
+  const accountNameMap = new Map<string, string>();
+  accountNameMap.set("cash", "Готівка");
+  const rawCashAccounts = kv["cashAccounts"];
+  if (Array.isArray(rawCashAccounts)) {
+    for (const acc of rawCashAccounts as { id?: string; name?: string }[]) {
+      if (acc?.id && acc?.name) {
+        accountNameMap.set(acc.id, acc.name);
+      }
+    }
+  }
 
   // Fetch card transactions
   const txRows = await adapterQueryRangeTransactions(session.userId, fromTime, toTime, accessibleAccountIds);
@@ -58,8 +71,8 @@ export const GET = withTelemetry("/api/transactions/export", async function GET(
     ? txRows.filter((tx) => tx.account_id === account)
     : txRows;
 
-  // Header conforming to standard Monobank CSV
-  const header = "Дата і час,Опис,MCC,Сума в валюті картки (UAH),Сума в валюті операції,Валюта операції,Комісія (UAH),Кешбек (UAH),Залишок";
+  // Header conforming to standard Monobank CSV with account column
+  const header = "Дата і час,Опис,MCC,Сума в валюті картки (UAH),Сума в валюті операції,Валюта операції,Комісія (UAH),Кешбек (UAH),Залишок,Рахунок";
   const lines: string[] = [header];
 
   for (const tx of filteredTxs) {
@@ -72,16 +85,16 @@ export const GET = withTelemetry("/api/transactions/export", async function GET(
     const commissionStr = tx.commission_rate ? (tx.commission_rate / 100).toFixed(2) : "0.00";
     const cashbackStr = tx.cashback_amount ? (tx.cashback_amount / 100).toFixed(2) : "0.00";
     const balanceStr = tx.balance !== null ? (tx.balance / 100).toFixed(2) : "0.00";
+    const accName = escapeCsvField(accountNameMap.get(tx.account_id) || tx.account_id || "Картка");
 
     lines.push(
-      `${dateTimeStr},${desc},${mcc},${amountStr},${opAmountStr},${currStr},${commissionStr},${cashbackStr},${balanceStr}`
+      `${dateTimeStr},${desc},${mcc},${amountStr},${opAmountStr},${currStr},${commissionStr},${cashbackStr},${balanceStr},${accName}`
     );
   }
 
   // If cash or all, also include wallet entries
   if (account === "all" || account === "cash" || account.startsWith("cash_")) {
     try {
-      const kv = await adapterGetAllKV(session.userId);
       const rawWallet = kv["wallet"];
       if (Array.isArray(rawWallet)) {
         const walletEntries = rawWallet as WalletEntry[];
@@ -98,9 +111,11 @@ export const GET = withTelemetry("/api/transactions/export", async function GET(
           const amt = Math.abs(w.amount || 0) * sign;
           const amountStr = (amt / 100).toFixed(2);
           const currStr = CURRENCY_MAP[w.currency || 980] || "UAH";
+          const targetAccId = w.accountId || "cash";
+          const accName = escapeCsvField(accountNameMap.get(targetAccId) || (targetAccId === "cash" ? "Готівка" : targetAccId));
 
           lines.push(
-            `${dateTimeStr},${desc},0,${amountStr},${amountStr},${currStr},0.00,0.00,0.00`
+            `${dateTimeStr},${desc},0,${amountStr},${amountStr},${currStr},0.00,0.00,0.00,${accName}`
           );
         }
       }

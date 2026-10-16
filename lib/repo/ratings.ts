@@ -39,3 +39,16 @@ export function clearRating(database: DB, userId: number, txId: string): boolean
     .run(userId, txId);
   return info.changes > 0;
 }
+
+export function listAllRatings(
+  database: DB,
+  userId: number
+): { tx_id: string; score: number; created_at: number }[] {
+  return database
+    .prepare("SELECT tx_id, score, created_at FROM ratings WHERE user_id = ? ORDER BY created_at ASC")
+    .all(userId) as { tx_id: string; score: number; created_at: number }[];
+}
+
+export function clearAllRatings(database: DB, userId: number): void {
+  database.prepare("DELETE FROM ratings WHERE user_id = ?").run(userId);
+}
