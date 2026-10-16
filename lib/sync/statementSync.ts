@@ -3,6 +3,14 @@ import type { MonoStatementItem } from "../monobank";
 import { backwardWindows, DAY } from "./windows";
 import { upsertMany } from "../repo/transactions";
 import * as state from "../repo/syncState";
+import {
+  adapterEnsureSyncState,
+  adapterSetSyncStateStatus,
+  adapterUpsertManyTransactions,
+  adapterSetSyncStateCoveredFrom,
+  adapterSetSyncStateCoveredTo,
+  adapterMarkSyncStateBackfillDone,
+} from "../data-adapter";
 
 export type StatementFetcher = (
   accountId: string,
@@ -94,6 +102,78 @@ export async function syncRecent(
     state.setStatus(database, userId, accountId, "idle");
   } catch (e) {
     state.setStatus(database, userId, accountId, "error", (e as Error).message);
+    throw e;
+  }
+  return saved;
+}
+
+export async function backfillAccountAdapter(
+  userId: number,
+  accountId: string,
+  fetch: StatementFetcher,
+  opts: SyncOptions
+): Promise<number> {
+  const nowSeconds = opts.now();
+  const existing = await adapterEnsureSyncState(userId, accountId, nowSeconds);
+  if (existing.backfill_done === 1) return 0;
+
+  await adapterSetSyncStateStatus(userId, accountId, "backfilling");
+
+  const floor = nowSeconds - opts.maxDepthDays * DAY;
+  let cursorTo = existing.covered_from != null ? existing.covered_from - 1 : nowSeconds;
+  let emptyStreak = 0;
+  let saved = 0;
+
+  try {
+    while (cursorTo >= floor) {
+      const from = Math.max(floor, cursorTo - opts.windowDays * DAY + 1);
+      const items = await fetch(accountId, from, cursorTo);
+
+      if (items.length === 0) {
+        emptyStreak++;
+      } else {
+        emptyStreak = 0;
+        saved += await adapterUpsertManyTransactions(userId, accountId, items, nowSeconds);
+      }
+
+      await adapterSetSyncStateCoveredFrom(userId, accountId, from);
+
+      if (emptyStreak >= opts.emptyWindowsToStop) break;
+      if (from === floor) break;
+      cursorTo = from - 1;
+    }
+    await adapterMarkSyncStateBackfillDone(userId, accountId);
+    await adapterSetSyncStateStatus(userId, accountId, "idle");
+  } catch (e) {
+    await adapterSetSyncStateStatus(userId, accountId, "error", (e as Error).message);
+    throw e;
+  }
+
+  return saved;
+}
+
+export async function syncRecentAdapter(
+  userId: number,
+  accountId: string,
+  fetch: StatementFetcher,
+  opts: SyncOptions
+): Promise<number> {
+  const nowSeconds = opts.now();
+  const existing = await adapterEnsureSyncState(userId, accountId, nowSeconds);
+  const coveredTo = existing.covered_to ?? nowSeconds - opts.overlapDays * DAY;
+  const from = coveredTo - opts.overlapDays * DAY;
+
+  await adapterSetSyncStateStatus(userId, accountId, "syncing");
+  let saved = 0;
+  try {
+    for (const w of backwardWindows(from, nowSeconds, opts.windowDays)) {
+      const items = await fetch(accountId, w.from, w.to);
+      saved += await adapterUpsertManyTransactions(userId, accountId, items, nowSeconds);
+    }
+    await adapterSetSyncStateCoveredTo(userId, accountId, nowSeconds);
+    await adapterSetSyncStateStatus(userId, accountId, "idle");
+  } catch (e) {
+    await adapterSetSyncStateStatus(userId, accountId, "error", (e as Error).message);
     throw e;
   }
   return saved;

@@ -1,13 +1,13 @@
 "use client";
 
-import { useMemo, useState } from "react";
-import { Search, EyeOff, Eye, Star, CreditCard, Banknote, X, SlidersHorizontal, ChevronDown, UploadCloud } from "lucide-react";
+import { useMemo, useState, useRef, useEffect, memo } from "react";
+import { Search, EyeOff, Eye, Star, CreditCard, Banknote, X, SlidersHorizontal, ChevronDown, UploadCloud, Download } from "lucide-react";
 import type { MonoStatementItem, MonoAccount } from "@/lib/monobank";
 import type { WalletEntry } from "@/lib/storage";
 import { type CashAccount, accountDisplay } from "@/lib/cashAccounts";
 import { mccToCategory, CATEGORIES } from "@/lib/mcc";
 import { formatMoney, pluralUk } from "@/lib/format";
-import type { Period } from "@/lib/useMono";
+import { rangeFor, type Period } from "@/lib/useMono";
 import { Card, CardContent } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
@@ -53,6 +53,17 @@ export interface UnifiedItem {
   commitmentName?: string | null;
 }
 
+const ukDayDateFormatter = new Intl.DateTimeFormat("uk-UA", {
+  day: "2-digit",
+  month: "long",
+  weekday: "short",
+});
+
+const ukTimeFormatter = new Intl.DateTimeFormat("uk-UA", {
+  hour: "2-digit",
+  minute: "2-digit",
+});
+
 function dayLabel(unix: number): string {
   const d = new Date(unix * 1000);
   const today = new Date();
@@ -60,7 +71,7 @@ function dayLabel(unix: number): string {
   const same = (a: Date, b: Date) => a.toDateString() === b.toDateString();
   if (same(d, today)) return "Сьогодні";
   if (same(d, yest)) return "Вчора";
-  return d.toLocaleDateString("uk-UA", { day: "2-digit", month: "long", weekday: "short" });
+  return ukDayDateFormatter.format(d);
 }
 
 export function Expenses({
@@ -167,9 +178,25 @@ export function Expenses({
     });
   }, [statement, accountCurrency, accountName, fakeIds, ratings, txNotes, jarTitles, txOverrides, excludedAccounts, partnerKeywords, pairedIds, txCommitments, commitments]);
 
+  const activeRange = useMemo(() => rangeFor(period ?? "month"), [period]);
+
   const cashItems = useMemo<UnifiedItem[]>(() => {
     if (!wallet || wallet.length === 0) return [];
-    return wallet.map((e) => {
+    const isAll = period === "all";
+    const fromMs = activeRange.fromMs;
+    const toMs = activeRange.toMs + 86400_000;
+
+    const items: UnifiedItem[] = [];
+    for (const e of wallet) {
+      const timeMs = new Date(`${e.date}T12:00:00`).getTime();
+      const time = Number.isNaN(timeMs) ? Math.floor(Date.now() / 1000) : Math.floor(timeMs / 1000);
+
+      if (!isAll && !Number.isNaN(timeMs)) {
+        if (timeMs < fromMs || timeMs > toMs) {
+          continue;
+        }
+      }
+
       const acc = accountDisplay(e.accountId, cashAccounts || []);
       let amt = 0;
       let title = e.source || "Готівкова операція";
@@ -212,15 +239,14 @@ export function Expenses({
         }
       }
 
-      const time = Math.floor(new Date(`${e.date}T12:00:00`).getTime() / 1000);
       const note = txNotes ? txNotes[e.id] : undefined;
 
-      return {
+      items.push({
         id: e.id,
         sourceType: "cash",
         amount: amt,
         currency: cur,
-        time: Number.isNaN(time) ? Math.floor(Date.now() / 1000) : time,
+        time,
         title,
         description: e.source,
         categoryKey: catKey,
@@ -234,9 +260,10 @@ export function Expenses({
         commitmentName: e.commitmentId
           ? commitments?.find((c) => c.id === e.commitmentId)?.name ?? null
           : null,
-      };
-    });
-  }, [wallet, cashAccounts, accountCurrency, ratings, txNotes, commitments]);
+      });
+    }
+    return items;
+  }, [wallet, cashAccounts, accountCurrency, ratings, txNotes, commitments, period, activeRange]);
 
   const allItems = useMemo(() => {
     const list = [...monoItems, ...cashItems];
@@ -286,7 +313,30 @@ export function Expenses({
       .reduce((sum, it) => sum + Math.abs(it.amount), 0);
   }, [filtered]);
 
-  const groups = useMemo(() => {
+  const [visibleCount, setVisibleCount] = useState(60);
+  const sentinelRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    setVisibleCount(60);
+  }, [query, sourceFilter, directionFilter, catFilter, period]);
+
+  useEffect(() => {
+    if (typeof window === "undefined" || !("IntersectionObserver" in window)) return;
+    if (visibleCount >= filtered.length) return;
+    const observer = new IntersectionObserver(
+      (entries) => {
+        if (entries[0]?.isIntersecting) {
+          setVisibleCount((prev) => Math.min(prev + 50, filtered.length));
+        }
+      },
+      { rootMargin: "400px" }
+    );
+    const el = sentinelRef.current;
+    if (el) observer.observe(el);
+    return () => observer.disconnect();
+  }, [visibleCount, filtered.length]);
+
+  const allGroups = useMemo(() => {
     const map = new Map<string, { label: string; items: UnifiedItem[]; total: number }>();
     for (const it of filtered) {
       const key = new Date(it.time * 1000).toDateString();
@@ -302,6 +352,19 @@ export function Expenses({
     }
     return [...map.values()];
   }, [filtered]);
+
+  const groupsToRender = useMemo(() => {
+    let count = 0;
+    const result: { label: string; items: UnifiedItem[]; total: number }[] = [];
+    for (const g of allGroups) {
+      if (count >= visibleCount) break;
+      const remaining = visibleCount - count;
+      const slice = g.items.slice(0, remaining);
+      result.push({ label: g.label, items: slice, total: g.total });
+      count += slice.length;
+    }
+    return result;
+  }, [allGroups, visibleCount]);
 
   const handleRowClick = (item: UnifiedItem) => {
     setSelectedTx(item);
@@ -382,6 +445,21 @@ export function Expenses({
               {hasActiveFilters && !filtersOpen && (
                 <span className="flex size-2 rounded-full bg-primary ring-2 ring-background" />
               )}
+            </Button>
+
+            <Button
+              type="button"
+              variant="outline"
+              onClick={() => {
+                const acc = selectedAccount || "all";
+                window.open(`/api/transactions/export?account=${encodeURIComponent(acc)}`, "_blank");
+              }}
+              className="h-10 px-3 rounded-xl gap-1.5 font-medium shrink-0 border-border/80 hover:bg-card"
+              title="Експорт банківської виписки CSV"
+              aria-label="Експорт банківської виписки CSV"
+            >
+              <Download className="size-4 text-primary shrink-0" />
+              <span className="hidden sm:inline text-xs">Експорт CSV</span>
             </Button>
 
             {onOpenImport && (
@@ -674,7 +752,7 @@ export function Expenses({
       )}
 
       {/* Групований список за днями */}
-      {groups.map((g) => (
+      {groupsToRender.map((g) => (
         <div key={g.label} className="space-y-1.5">
           <div className="flex items-center justify-between px-2 text-xs">
             <span className="font-semibold text-muted-foreground">{g.label}</span>
@@ -700,6 +778,36 @@ export function Expenses({
           </Card>
         </div>
       ))}
+
+      {/* Прогресивне завантаження / пагінація */}
+      {visibleCount < filtered.length && (
+        <div className="flex flex-col sm:flex-row items-center justify-between gap-3 pt-3 pb-2 text-xs text-muted-foreground">
+          <span>
+            Показано {Math.min(visibleCount, filtered.length)} з {filtered.length} операцій
+          </span>
+          <div className="flex items-center gap-2">
+            <Button
+              variant="outline"
+              size="sm"
+              className="rounded-xl h-9 text-xs"
+              onClick={() => setVisibleCount((prev) => Math.min(prev + 50, filtered.length))}
+            >
+              Показати ще 50
+            </Button>
+            {filtered.length - visibleCount > 50 && (
+              <Button
+                variant="ghost"
+                size="sm"
+                className="rounded-xl h-9 text-xs text-muted-foreground hover:text-foreground"
+                onClick={() => setVisibleCount(filtered.length)}
+              >
+                Показати всі ({filtered.length})
+              </Button>
+            )}
+          </div>
+        </div>
+      )}
+      <div ref={sentinelRef} className="h-1" />
 
       {/* Підказка внизу */}
       <div className="rounded-xl bg-secondary/50 p-3 text-xs text-muted-foreground flex items-start gap-2">
@@ -735,7 +843,7 @@ export function Expenses({
   );
 }
 
-function UnifiedRow({
+const UnifiedRow = memo(function UnifiedRow({
   it,
   cc,
   onClick,
@@ -753,10 +861,7 @@ function UnifiedRow({
     color: "#9ca3af",
   };
   const isExpense = it.amount < 0;
-  const time = new Date(it.time * 1000).toLocaleTimeString("uk-UA", {
-    hour: "2-digit",
-    minute: "2-digit",
-  });
+  const time = ukTimeFormatter.format(new Date(it.time * 1000));
 
   return (
     <div
@@ -886,7 +991,7 @@ function UnifiedRow({
       )}
     </div>
   );
-}
+});
 
 function FilterChip({
   active,

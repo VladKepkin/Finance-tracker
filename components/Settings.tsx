@@ -24,6 +24,7 @@ import { CommitmentsCard } from "@/components/Commitments";
 import { IncomeScheduleCard } from "@/components/IncomeSchedule";
 import { SalariesCard } from "@/components/Salaries";
 import { ExportCard } from "@/components/ExportCard";
+import { BackupCard } from "@/components/BackupCard";
 import { FamilySettings } from "@/components/FamilySettings";
 import type { CommitmentSettlement } from "@/lib/commitmentPayments";
 import type { CommitmentOverride, CommitmentOverridesMap } from "@/lib/storage";
@@ -380,6 +381,9 @@ export function Settings({
 
           {/* Експорт для AI */}
           <ExportCard accountId={selectedAccount} accountCurrency={accountCurrency} jarTitles={jarTitles} />
+
+          {/* Резервне копіювання профілю (JSON Backup/Restore) */}
+          <BackupCard />
 
           {/* Історія та статус синхронізації SQLite */}
           <HistoryCard />

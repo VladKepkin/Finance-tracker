@@ -269,7 +269,18 @@ export async function queryPageTransactionsPg(
 
 export async function listActiveCommitmentsPg(userId: number): Promise<CommitmentRow[]> {
   const res = await queryPg<CommitmentRow>(
-    "SELECT * FROM commitments WHERE user_id = $1 AND active = 1 ORDER BY amount DESC",
+    `SELECT * FROM commitments
+     WHERE active = 1 AND (
+       user_id = $1
+       OR (
+         scope = 'family' AND user_id IN (
+           SELECT gm2.user_id FROM group_members gm1
+           JOIN group_members gm2 ON gm1.group_id = gm2.group_id
+           WHERE gm1.user_id = $1
+         )
+       )
+     )
+     ORDER BY amount DESC`,
     [userId]
   );
   return res.rows;
@@ -285,21 +296,33 @@ export async function insertCommitmentPg(
     anchorDay: number;
     matcher?: string | null;
     source?: "card" | "cash";
+    scope?: "personal" | "family";
   },
   nowSeconds: number
 ): Promise<number> {
   const source = c.source === "cash" ? "cash" : "card";
+  const scope = c.scope === "family" ? "family" : "personal";
   const res = await queryPg<{ id: number }>(
-    `INSERT INTO commitments (user_id, name, amount, currency, cadence, anchor_day, matcher, active, created_at, source)
-     VALUES ($1, $2, $3, $4, $5, $6, $7, 1, $8, $9) RETURNING id`,
-    [userId, c.name, c.amount, c.currency, c.cadence, c.anchorDay, c.matcher ?? null, nowSeconds, source]
+    `INSERT INTO commitments (user_id, name, amount, currency, cadence, anchor_day, matcher, active, created_at, source, scope)
+     VALUES ($1, $2, $3, $4, $5, $6, $7, 1, $8, $9, $10) RETURNING id`,
+    [userId, c.name, c.amount, c.currency, c.cadence, c.anchorDay, c.matcher ?? null, nowSeconds, source, scope]
   );
   return res.rows[0].id;
 }
 
 export async function getCommitmentByIdPg(userId: number, id: number): Promise<CommitmentRow | null> {
   const res = await queryPg<CommitmentRow>(
-    "SELECT * FROM commitments WHERE id = $1 AND user_id = $2",
+    `SELECT * FROM commitments
+     WHERE id = $1 AND (
+       user_id = $2
+       OR (
+         scope = 'family' AND user_id IN (
+           SELECT gm2.user_id FROM group_members gm1
+           JOIN group_members gm2 ON gm1.group_id = gm2.group_id
+           WHERE gm1.user_id = $2
+         )
+       )
+     )`,
     [id, userId]
   );
   return res.rows[0] ?? null;
@@ -308,7 +331,14 @@ export async function getCommitmentByIdPg(userId: number, id: number): Promise<C
 export async function updateCommitmentPg(
   userId: number,
   id: number,
-  patch: { name?: string; amount?: number; cadence?: Cadence; anchorDay?: number; source?: "card" | "cash" }
+  patch: {
+    name?: string;
+    amount?: number;
+    cadence?: Cadence;
+    anchorDay?: number;
+    source?: "card" | "cash";
+    scope?: "personal" | "family";
+  }
 ): Promise<boolean> {
   const sets: string[] = [];
   const params: any[] = [];
@@ -334,25 +364,61 @@ export async function updateCommitmentPg(
     sets.push(`source = $${idx++}`);
     params.push(patch.source);
   }
+  if (patch.scope !== undefined) {
+    sets.push(`scope = $${idx++}`);
+    params.push(patch.scope);
+  }
   if (sets.length === 0) return false;
 
+  const idIdx = idx++;
+  const userIdx = idx++;
   params.push(id, userId);
-  const sql = `UPDATE commitments SET ${sets.join(", ")} WHERE id = $${idx++} AND user_id = $${idx++}`;
+  const sql = `UPDATE commitments SET ${sets.join(", ")}
+    WHERE id = $${idIdx} AND (
+      user_id = $${userIdx}
+      OR (
+        scope = 'family' AND user_id IN (
+          SELECT gm2.user_id FROM group_members gm1
+          JOIN group_members gm2 ON gm1.group_id = gm2.group_id
+          WHERE gm1.user_id = $${userIdx}
+        )
+      )
+    )`;
   const res = await queryPg(sql, params);
   return (res.rowCount ?? 0) > 0;
 }
 
 export async function deactivateCommitmentPg(userId: number, id: number): Promise<boolean> {
-  const res = await queryPg("UPDATE commitments SET active = 0 WHERE id = $1 AND user_id = $2", [
-    id,
-    userId,
-  ]);
+  const res = await queryPg(
+    `UPDATE commitments SET active = 0
+     WHERE id = $1 AND (
+       user_id = $2
+       OR (
+         scope = 'family' AND user_id IN (
+           SELECT gm2.user_id FROM group_members gm1
+           JOIN group_members gm2 ON gm1.group_id = gm2.group_id
+           WHERE gm1.user_id = $2
+         )
+       )
+     )`,
+    [id, userId]
+  );
   return (res.rowCount ?? 0) > 0;
 }
 
 export async function activeMatchersPg(userId: number): Promise<Set<string>> {
   const res = await queryPg<{ matcher: string }>(
-    "SELECT matcher FROM commitments WHERE user_id = $1 AND active = 1 AND matcher IS NOT NULL",
+    `SELECT matcher FROM commitments
+     WHERE active = 1 AND matcher IS NOT NULL AND (
+       user_id = $1
+       OR (
+         scope = 'family' AND user_id IN (
+           SELECT gm2.user_id FROM group_members gm1
+           JOIN group_members gm2 ON gm1.group_id = gm2.group_id
+           WHERE gm1.user_id = $1
+         )
+       )
+     )`,
     [userId]
   );
   return new Set(res.rows.map((r) => r.matcher));
@@ -460,6 +526,20 @@ export async function clearRatingPg(userId: number, txId: string): Promise<boole
   return (res.rowCount ?? 0) > 0;
 }
 
+export async function listAllRatingsPg(
+  userId: number
+): Promise<{ tx_id: string; score: number; created_at: number }[]> {
+  const res = await queryPg<{ tx_id: string; score: number; created_at: number }>(
+    "SELECT tx_id, score, created_at FROM ratings WHERE user_id = $1 ORDER BY created_at ASC",
+    [userId]
+  );
+  return res.rows;
+}
+
+export async function clearAllRatingsPg(userId: number): Promise<void> {
+  await queryPg("DELETE FROM ratings WHERE user_id = $1", [userId]);
+}
+
 // --- FX Rates ---
 
 export async function upsertDailyFxRatesPg(date: string, rates: CurrencyRate[]): Promise<number> {
@@ -564,7 +644,7 @@ export async function setSyncStateCoveredToPg(userId: number, accountId: string,
 }
 
 export async function markSyncStateBackfillDonePg(userId: number, accountId: string): Promise<void> {
-  await queryPg("UPDATE sync_state SET backfill_done = 1 WHERE user_id = $2 AND account_id = $3", [
+  await queryPg("UPDATE sync_state SET backfill_done = 1 WHERE user_id = $1 AND account_id = $2", [
     userId,
     accountId,
   ]);
@@ -756,4 +836,26 @@ export async function acceptInvitePg(
   }
 
   return { groupId: invite.group_id, groupName: group.name };
+}
+
+export async function findUserByAccountIdPg(accountId: string): Promise<number | null> {
+  const resSync = await queryPg<{ user_id: number }>(
+    "SELECT user_id FROM sync_state WHERE account_id = $1 LIMIT 1",
+    [accountId]
+  );
+  if (resSync.rows.length > 0) return resSync.rows[0].user_id;
+
+  const resShared = await queryPg<{ user_id: number }>(
+    "SELECT owner_user_id AS user_id FROM shared_accounts WHERE account_id = $1 LIMIT 1",
+    [accountId]
+  );
+  if (resShared.rows.length > 0) return resShared.rows[0].user_id;
+
+  const resTx = await queryPg<{ user_id: number }>(
+    "SELECT user_id FROM transactions WHERE account_id = $1 LIMIT 1",
+    [accountId]
+  );
+  if (resTx.rows.length > 0) return resTx.rows[0].user_id;
+
+  return null;
 }

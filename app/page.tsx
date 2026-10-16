@@ -193,7 +193,7 @@ export default function Home() {
   const [hydrated, setHydrated] = useState(false);
   const [metrics, setMetrics] = useState<MetricsPayload | null>(null);
   const [rawCommitments, setRawCommitments] = useState<
-    { id: number; name: string; amount: number; currency: number; cadence: Cadence; anchorDay: number; source?: "card" | "cash" }[] | null
+    { id: number; name: string; amount: number; currency: number; cadence: Cadence; anchorDay: number; source?: "card" | "cash"; scope?: "personal" | "family" }[] | null
   >(null);
   const [commitmentsError, setCommitmentsError] = useState<string | null>(null);
   const [rawSalaries, setRawSalaries] = useState<{ paidOn: string; amount: number; currency: number }[] | null>(
@@ -506,7 +506,7 @@ export default function Home() {
         return;
       }
       const data = (await res.json()) as {
-        items: { id: number; name: string; amount: number; currency: number; cadence: Cadence; anchor_day: number; source?: "card" | "cash" }[];
+        items: { id: number; name: string; amount: number; currency: number; cadence: Cadence; anchor_day: number; source?: "card" | "cash"; scope?: "personal" | "family" }[];
       };
       if (isCancelled?.()) return;
       setRawCommitments(
@@ -518,6 +518,7 @@ export default function Home() {
           cadence: c.cadence,
           anchorDay: c.anchor_day,
           source: c.source ?? "card",
+          scope: c.scope ?? "personal",
         }))
       );
       setCommitmentsError(null);
@@ -738,8 +739,16 @@ export default function Home() {
 
   const commitmentsResult = useMemo(() => {
     if (rawCommitments === null) return null;
+    const filteredCommitments = hasSharedCards
+      ? rawCommitments.filter((c) =>
+          budgetScope === "family"
+            ? (c.scope ?? "personal") === "family"
+            : (c.scope ?? "personal") !== "family"
+        )
+      : rawCommitments;
+
     const converted: AllowanceCommitment[] = [];
-    for (const c of rawCommitments) {
+    for (const c of filteredCommitments) {
       const amountBase = convertMinor(c.amount, c.currency, base, rates);
       if (amountBase === null) return { ok: false as const, currency: c.currency };
       const settlement = settlements?.get(c.id);
@@ -762,7 +771,7 @@ export default function Home() {
       });
     }
     return { ok: true as const, commitments: converted };
-  }, [rawCommitments, settlements, base, rates]);
+  }, [rawCommitments, settlements, base, rates, hasSharedCards, budgetScope]);
 
   const spentTodayResult = useMemo(() => {
     const todayStart = Math.floor(nowSeconds / 86_400) * 86_400;

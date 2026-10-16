@@ -1,5 +1,5 @@
 import { isPostgresConfigured } from "./pg";
-import { db, getUserById, getUserByUsername, createUser, getMonoTokenEnc, setMonoTokenEnc, getAllKV, setKV } from "./db";
+import { db, getUserById, getUserByUsername, createUser, getMonoTokenEnc, setMonoTokenEnc, getAllKV, setKV, getAllUsersWithToken } from "./db";
 import * as pgRepo from "./pg-repo";
 import * as txRepo from "./repo/transactions";
 import * as commitRepo from "./repo/commitments";
@@ -72,6 +72,14 @@ export async function adapterSetMonoTokenEnc(userId: number, enc: string | null)
     return pgRepo.setMonoTokenEncPg(userId, enc);
   }
   setMonoTokenEnc(userId, enc);
+}
+
+export async function adapterGetAllUsersWithToken(): Promise<UserRow[]> {
+  if (isPostgresConfigured()) {
+    await ensurePgSeededUser();
+    return pgRepo.getAllUsersWithTokenPg();
+  }
+  return getAllUsersWithToken(db());
 }
 
 // --- KV ---
@@ -179,6 +187,7 @@ export async function adapterInsertCommitment(
     anchorDay: number;
     matcher?: string | null;
     source?: "card" | "cash";
+    scope?: "personal" | "family";
   },
   nowSeconds: number
 ): Promise<number> {
@@ -198,7 +207,14 @@ export async function adapterGetCommitmentById(userId: number, id: number): Prom
 export async function adapterUpdateCommitment(
   userId: number,
   id: number,
-  patch: { name?: string; amount?: number; cadence?: Cadence; anchorDay?: number; source?: "card" | "cash" }
+  patch: {
+    name?: string;
+    amount?: number;
+    cadence?: Cadence;
+    anchorDay?: number;
+    source?: "card" | "cash";
+    scope?: "personal" | "family";
+  }
 ): Promise<boolean> {
   if (isPostgresConfigured()) {
     return pgRepo.updateCommitmentPg(userId, id, patch);
@@ -211,6 +227,13 @@ export async function adapterDeactivateCommitment(userId: number, id: number): P
     return pgRepo.deactivateCommitmentPg(userId, id);
   }
   return commitRepo.deactivate(db(), userId, id);
+}
+
+export async function adapterActiveMatchersCommitments(userId: number): Promise<Set<string>> {
+  if (isPostgresConfigured()) {
+    return pgRepo.activeMatchersPg(userId);
+  }
+  return commitRepo.activeMatchers(db(), userId);
 }
 
 // --- Salaries ---
@@ -286,6 +309,22 @@ export async function adapterClearRating(userId: number, txId: string): Promise<
   return ratRepo.clearRating(db(), userId, txId);
 }
 
+export async function adapterListAllRatings(
+  userId: number
+): Promise<{ tx_id: string; score: number; created_at: number }[]> {
+  if (isPostgresConfigured()) {
+    return pgRepo.listAllRatingsPg(userId);
+  }
+  return ratRepo.listAllRatings(db(), userId);
+}
+
+export async function adapterClearAllRatings(userId: number): Promise<void> {
+  if (isPostgresConfigured()) {
+    return pgRepo.clearAllRatingsPg(userId);
+  }
+  ratRepo.clearAllRatings(db(), userId);
+}
+
 // --- FX Rates ---
 
 export async function adapterLatestRates(): Promise<CurrencyRate[]> {
@@ -300,6 +339,13 @@ export async function adapterUpsertDailyFxRates(date: string, rates: CurrencyRat
     return pgRepo.upsertDailyFxRatesPg(date, rates);
   }
   return fxRepo.upsertDaily(db(), date, rates);
+}
+
+export async function adapterHasDateFx(date: string): Promise<boolean> {
+  if (isPostgresConfigured()) {
+    return pgRepo.hasDateFxPg(date);
+  }
+  return fxRepo.hasDate(db(), date);
 }
 
 // --- Sync State ---
@@ -327,6 +373,57 @@ export async function adapterListSyncStateForUser(userId: number): Promise<SyncS
     return pgRepo.listSyncStateForUserPg(userId);
   }
   return syncRepo.listForUser(db(), userId);
+}
+
+export async function adapterSetSyncStateCoveredFrom(
+  userId: number,
+  accountId: string,
+  from: number
+): Promise<void> {
+  if (isPostgresConfigured()) {
+    return pgRepo.setSyncStateCoveredFromPg(userId, accountId, from);
+  }
+  syncRepo.setCoveredFrom(db(), userId, accountId, from);
+}
+
+export async function adapterSetSyncStateCoveredTo(
+  userId: number,
+  accountId: string,
+  to: number
+): Promise<void> {
+  if (isPostgresConfigured()) {
+    return pgRepo.setSyncStateCoveredToPg(userId, accountId, to);
+  }
+  syncRepo.setCoveredTo(db(), userId, accountId, to);
+}
+
+export async function adapterMarkSyncStateBackfillDone(
+  userId: number,
+  accountId: string
+): Promise<void> {
+  if (isPostgresConfigured()) {
+    return pgRepo.markSyncStateBackfillDonePg(userId, accountId);
+  }
+  syncRepo.markBackfillDone(db(), userId, accountId);
+}
+
+export async function adapterSetSyncStateStatus(
+  userId: number,
+  accountId: string,
+  status: SyncStatus,
+  error: string | null = null
+): Promise<void> {
+  if (isPostgresConfigured()) {
+    return pgRepo.setSyncStateStatusPg(userId, accountId, status, error);
+  }
+  syncRepo.setStatus(db(), userId, accountId, status, error);
+}
+
+export async function adapterFindUserByAccountId(accountId: string): Promise<number | null> {
+  if (isPostgresConfigured()) {
+    return pgRepo.findUserByAccountIdPg(accountId);
+  }
+  return syncRepo.findUserByAccountId(db(), accountId);
 }
 
 // --- Groups ---

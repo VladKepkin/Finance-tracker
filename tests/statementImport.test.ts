@@ -51,6 +51,7 @@ describe("statementImport", () => {
       amount: 35050,
       kind: "expense",
       date: "2026-10-08",
+      accountName: "4149***1234",
     });
 
     expect(res.items[1]).toMatchObject({
@@ -58,6 +59,7 @@ describe("statementImport", () => {
       amount: 100000,
       kind: "income",
       date: "2026-10-09",
+      accountName: "4149***1234",
     });
   });
 
@@ -72,5 +74,18 @@ describe("statementImport", () => {
     expect(res.items[0].kind).toBe("expense");
     expect(res.items[1].amount).toBe(150000);
     expect(res.items[1].kind).toBe("income");
+  });
+
+  it("parses multi-account CSV with account column", () => {
+    const csv = `Дата і час,Опис,MCC,Сума в валюті картки (UAH),Сума в валюті операції,Валюта операції,Комісія (UAH),Кешбек (UAH),Залишок,Рахунок
+11.10.2026 14:00:00,АТБ,5411,-320.00,-320.00,UAH,0.00,0.00,10000.00,Монобанк Чорна
+11.10.2026 15:30:00,Кава,5814,-60.00,-60.00,UAH,0.00,0.00,0.00,Готівка
+11.10.2026 16:00:00,Аптека,5912,-150.00,-150.00,UAH,0.00,0.00,5000.00,Приват Універсальна
+`;
+    const res = detectAndParseStatement(csv);
+    expect(res.items.length).toBe(3);
+    expect(res.items[0].accountName).toBe("Монобанк Чорна");
+    expect(res.items[1].accountName).toBe("Готівка");
+    expect(res.items[2].accountName).toBe("Приват Універсальна");
   });
 });

@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import type { NextRequest } from "next/server";
 import { verifySession, SESSION_COOKIE } from "@/lib/jwt";
 
-const PUBLIC = ["/login", "/api/auth/login"];
+const PUBLIC = ["/login", "/api/auth/login", "/api/auth/register", "/api/monobank/webhook"];
 
 export async function middleware(req: NextRequest) {
   const { pathname } = req.nextUrl;

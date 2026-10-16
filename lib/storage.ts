@@ -272,3 +272,70 @@ export const setManualMode = (v: boolean) => set("manualMode", v);
 export function uid(): string {
   return Math.random().toString(36).slice(2) + Date.now().toString(36);
 }
+
+export function appendWalletEntry(entries: WalletEntry | WalletEntry[]): void {
+  const toAppend = Array.isArray(entries) ? entries : [entries];
+  const current = getWallet();
+  const existingIds = new Set(current.map((e) => e.id));
+  const next = [...current];
+  for (const e of toAppend) {
+    if (!existingIds.has(e.id)) {
+      next.push(e);
+      existingIds.add(e.id);
+    }
+  }
+  cache["wallet"] = next;
+  if (typeof window === "undefined") return;
+  void fetch("/api/data", {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ action: "wallet_append", entries: toAppend }),
+  }).catch(() => {});
+}
+
+export function removeWalletEntry(entryId: string): void {
+  const current = getWallet();
+  const next = current.filter((e) => e.id !== entryId);
+  cache["wallet"] = next;
+  if (typeof window === "undefined") return;
+  void fetch("/api/data", {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ action: "wallet_remove", entryId }),
+  }).catch(() => {});
+}
+
+export function updateWalletEntry(entryId: string, patch: Partial<WalletEntry>): void {
+  const current = getWallet();
+  const next = current.map((e) => (e.id === entryId ? { ...e, ...patch } : e));
+  cache["wallet"] = next;
+  if (typeof window === "undefined") return;
+  void fetch("/api/data", {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ action: "wallet_update", entryId, patch }),
+  }).catch(() => {});
+}
+
+export function patchMapKey(
+  key: "txNotes" | "txOverrides" | "txCommitments" | "commitmentOverrides" | "budgets",
+  itemKey: string,
+  itemValue: unknown | null
+): void {
+  const current =
+    cache[key] && typeof cache[key] === "object" && !Array.isArray(cache[key])
+      ? { ...(cache[key] as Record<string, unknown>) }
+      : {};
+  if (itemValue === null || itemValue === undefined) {
+    delete current[itemKey];
+  } else {
+    current[itemKey] = itemValue;
+  }
+  cache[key] = current;
+  if (typeof window === "undefined") return;
+  void fetch("/api/data", {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ action: "map_set", key, itemKey, itemValue }),
+  }).catch(() => {});
+}
