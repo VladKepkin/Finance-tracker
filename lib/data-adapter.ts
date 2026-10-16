@@ -229,6 +229,13 @@ export async function adapterDeactivateCommitment(userId: number, id: number): P
   return commitRepo.deactivate(db(), userId, id);
 }
 
+export async function adapterActiveMatchersCommitments(userId: number): Promise<Set<string>> {
+  if (isPostgresConfigured()) {
+    return pgRepo.activeMatchersPg(userId);
+  }
+  return commitRepo.activeMatchers(db(), userId);
+}
+
 // --- Salaries ---
 
 export async function adapterListSalaries(userId: number): Promise<SalaryRow[]> {

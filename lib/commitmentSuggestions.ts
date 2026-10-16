@@ -15,3 +15,22 @@ export function buildSuggestions(
   const known = activeMatchers(database, userId);
   return detectRecurring(txs, nowSeconds).filter((c) => !known.has(c.matcher));
 }
+
+export async function buildSuggestionsAsync(
+  userId: number,
+  nowSeconds: number
+): Promise<RecurrenceCandidate[]> {
+  const {
+    adapterTimeBoundsTransactions,
+    adapterQueryRangeTransactions,
+    adapterActiveMatchersCommitments,
+  } = await import("./data-adapter");
+  const bounds = await adapterTimeBoundsTransactions(userId);
+  if (bounds.minTime === null) return [];
+
+  const [txs, known] = await Promise.all([
+    adapterQueryRangeTransactions(userId, bounds.minTime, nowSeconds),
+    adapterActiveMatchersCommitments(userId),
+  ]);
+  return detectRecurring(txs, nowSeconds).filter((c) => !known.has(c.matcher));
+}
