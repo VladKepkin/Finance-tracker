@@ -187,6 +187,7 @@ export async function adapterInsertCommitment(
     anchorDay: number;
     matcher?: string | null;
     source?: "card" | "cash";
+    scope?: "personal" | "family";
   },
   nowSeconds: number
 ): Promise<number> {
@@ -206,7 +207,14 @@ export async function adapterGetCommitmentById(userId: number, id: number): Prom
 export async function adapterUpdateCommitment(
   userId: number,
   id: number,
-  patch: { name?: string; amount?: number; cadence?: Cadence; anchorDay?: number; source?: "card" | "cash" }
+  patch: {
+    name?: string;
+    amount?: number;
+    cadence?: Cadence;
+    anchorDay?: number;
+    source?: "card" | "cash";
+    scope?: "personal" | "family";
+  }
 ): Promise<boolean> {
   if (isPostgresConfigured()) {
     return pgRepo.updateCommitmentPg(userId, id, patch);
@@ -402,6 +410,13 @@ export async function adapterSetSyncStateStatus(
     return pgRepo.setSyncStateStatusPg(userId, accountId, status, error);
   }
   syncRepo.setStatus(db(), userId, accountId, status, error);
+}
+
+export async function adapterFindUserByAccountId(accountId: string): Promise<number | null> {
+  if (isPostgresConfigured()) {
+    return pgRepo.findUserByAccountIdPg(accountId);
+  }
+  return syncRepo.findUserByAccountId(db(), accountId);
 }
 
 // --- Groups ---

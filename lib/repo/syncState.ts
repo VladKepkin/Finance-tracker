@@ -72,3 +72,22 @@ export function listForUser(database: DB, userId: number): SyncStateRow[] {
     .prepare("SELECT * FROM sync_state WHERE user_id = ?")
     .all(userId) as SyncStateRow[];
 }
+
+export function findUserByAccountId(database: DB, accountId: string): number | null {
+  const rowSync = database
+    .prepare("SELECT user_id FROM sync_state WHERE account_id = ? LIMIT 1")
+    .get(accountId) as { user_id: number } | undefined;
+  if (rowSync) return rowSync.user_id;
+
+  const rowShared = database
+    .prepare("SELECT owner_user_id AS user_id FROM shared_accounts WHERE account_id = ? LIMIT 1")
+    .get(accountId) as { user_id: number } | undefined;
+  if (rowShared) return rowShared.user_id;
+
+  const rowTx = database
+    .prepare("SELECT user_id FROM transactions WHERE account_id = ? LIMIT 1")
+    .get(accountId) as { user_id: number } | undefined;
+  if (rowTx) return rowTx.user_id;
+
+  return null;
+}
