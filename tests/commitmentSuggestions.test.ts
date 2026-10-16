@@ -75,4 +75,42 @@ describe("buildSuggestions", () => {
     upsertMany(d, 2, "acc2", [tx("u2-1", NOW - DAY, -500, "COFFEE")], NOW);
     expect(buildSuggestions(d, 2, NOW)).toEqual([]);
   });
+
+  it("жоден API-роут не імпортує db() напряму з @/lib/db (захист від 500 у PostgreSQL контейнері)", async () => {
+    const fs = await import("fs");
+    const path = await import("path");
+    const apiDir = path.resolve(process.cwd(), "app/api");
+
+    function findRouteFiles(dir: string): string[] {
+      const entries = fs.readdirSync(dir, { withFileTypes: true });
+      const files: string[] = [];
+      for (const e of entries) {
+        const full = path.join(dir, e.name);
+        if (e.isDirectory()) files.push(...findRouteFiles(full));
+        else if (e.isFile() && e.name.endsWith(".ts")) files.push(full);
+      }
+      return files;
+    }
+
+    const routes = findRouteFiles(apiDir);
+    expect(routes.length).toBeGreaterThan(10);
+    for (const file of routes) {
+      const src = fs.readFileSync(file, "utf-8");
+      const importsDbDirectly = /import\s*\{[^}]*\bdb\b[^}]*\}\s*from\s*["']@\/lib\/db["']/.test(src);
+      expect(importsDbDirectly, `Route ${file} must use data-adapter instead of db()`).toBe(false);
+    }
+  });
+
+  it("composeRefs коректно передає вузол у функціональні та об'єктні ref без рекурсії", async () => {
+    const { composeRefs } = await import("@/lib/radix-compose-refs-shim");
+    const objRef = { current: null as string | null };
+    const calls: (string | null)[] = [];
+    const fnRef = (node: string | null) => {
+      calls.push(node);
+    };
+    const composed = composeRefs(objRef, fnRef);
+    composed("node-1");
+    expect(objRef.current).toBe("node-1");
+    expect(calls).toEqual(["node-1"]);
+  });
 });
