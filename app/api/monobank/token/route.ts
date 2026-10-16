@@ -2,7 +2,6 @@ import { NextResponse } from "next/server";
 import { monoFetch, MonoError, type MonoClientInfo } from "@/lib/monobank";
 import { getSession } from "@/lib/session";
 import { adapterSetMonoTokenEnc } from "@/lib/data-adapter";
-import { db } from "@/lib/db";
 import { encrypt } from "@/lib/crypto";
 import { clientInfoCache } from "@/lib/clientInfoCache";
 import { runOnce } from "@/lib/sync/scheduler";
@@ -27,7 +26,7 @@ export async function POST(req: Request) {
     const info = await monoFetch<MonoClientInfo>(token, "/personal/client-info");
     await adapterSetMonoTokenEnc(session.userId, encrypt(token));
     clientInfoCache.forget(session.userId);
-    void runOnce(db(), session.userId).catch((e) =>
+    void runOnce(session.userId).catch((e) =>
       console.error("[sync] помилка фонової синхронізації при підключенні токена:", (e as Error).message)
     );
     return NextResponse.json(info);

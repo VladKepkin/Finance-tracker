@@ -11,6 +11,7 @@ export interface ParsedTransaction {
   categoryKey?: string;
   mcc?: number;
   comment?: string;
+  accountName?: string;
 }
 
 function detectDelimiter(text: string): string {
@@ -136,6 +137,9 @@ export function parseMonobankCsv(rows: string[][]): ParsedTransaction[] {
     (h) => (h.includes("сума") || h.includes("amount")) && !h.includes("операції") && !h.includes("operation")
   );
   const opAmountIdx = header.findIndex((h) => h.includes("операції") || h.includes("operation amount"));
+  const accountIdx = header.findIndex(
+    (h) => h.includes("рахунок") || h.includes("account") || h.includes("картка") || h.includes("card")
+  );
 
   const targetAmountIdx = amountIdx !== -1 ? amountIdx : opAmountIdx;
   if (dateIdx === -1 || targetAmountIdx === -1) return [];
@@ -155,6 +159,7 @@ export function parseMonobankCsv(rows: string[][]): ParsedTransaction[] {
     const absAmount = Math.abs(rawAmount);
 
     const cat = mccToCategory(mcc ?? 0, rawAmount);
+    const accountName = accountIdx !== -1 && row[accountIdx] ? row[accountIdx].trim() : undefined;
 
     items.push({
       id: `mono_import_${time}_${absAmount}_${i}`,
@@ -166,6 +171,7 @@ export function parseMonobankCsv(rows: string[][]): ParsedTransaction[] {
       kind,
       categoryKey: cat.key,
       mcc: mcc && !isNaN(mcc) ? mcc : undefined,
+      accountName: accountName || undefined,
     });
   }
 
@@ -180,6 +186,9 @@ export function parsePrivatbankCsv(rows: string[][]): ParsedTransaction[] {
   const timeIdx = header.findIndex((h) => h.includes("час") || h.includes("time"));
   const descIdx = header.findIndex((h) => h.includes("опис") || h.includes("призначення") || h.includes("деталі"));
   const amountIdx = header.findIndex((h) => h.includes("сума в валюті картки") || h.includes("сума"));
+  const cardIdx = header.findIndex(
+    (h) => h.includes("картка") || h.includes("card") || h.includes("рахунок") || h.includes("account")
+  );
 
   if (dateIdx === -1 || amountIdx === -1) return [];
 
@@ -198,6 +207,7 @@ export function parsePrivatbankCsv(rows: string[][]): ParsedTransaction[] {
     const { date, time } = parseDateToTimestamp(dateStr);
     const kind = rawAmount < 0 ? "expense" : "income";
     const absAmount = Math.abs(rawAmount);
+    const accountName = cardIdx !== -1 && row[cardIdx] ? row[cardIdx].trim() : undefined;
 
     items.push({
       id: `privat_import_${time}_${absAmount}_${i}`,
@@ -207,6 +217,7 @@ export function parsePrivatbankCsv(rows: string[][]): ParsedTransaction[] {
       amount: absAmount,
       currencyCode: 980,
       kind,
+      accountName: accountName || undefined,
     });
   }
 
@@ -222,6 +233,9 @@ export function parseGenericCsv(rows: string[][]): ParsedTransaction[] {
     (h) => h.includes("desc") || h.includes("опис") || h.includes("name") || h.includes("назва") || h.includes("деталі")
   );
   const amountIdx = header.findIndex((h) => h.includes("amount") || h.includes("сума") || h.includes("sum"));
+  const accountIdx = header.findIndex(
+    (h) => h.includes("рахунок") || h.includes("account") || h.includes("картка") || h.includes("card")
+  );
 
   if (dateIdx === -1 || amountIdx === -1) return [];
 
@@ -237,6 +251,7 @@ export function parseGenericCsv(rows: string[][]): ParsedTransaction[] {
     const { date, time } = parseDateToTimestamp(dateStr);
     const kind = rawAmount < 0 ? "expense" : "income";
     const absAmount = Math.abs(rawAmount);
+    const accountName = accountIdx !== -1 && row[accountIdx] ? row[accountIdx].trim() : undefined;
 
     items.push({
       id: `generic_import_${time}_${absAmount}_${i}`,
@@ -246,6 +261,7 @@ export function parseGenericCsv(rows: string[][]): ParsedTransaction[] {
       amount: absAmount,
       currencyCode: 980,
       kind,
+      accountName: accountName || undefined,
     });
   }
 
