@@ -28,6 +28,7 @@ interface CommitmentRow {
   cadence: Cadence;
   anchor_day: number;
   source?: "card" | "cash";
+  scope?: "personal" | "family";
 }
 
 interface Suggestion {
@@ -72,6 +73,7 @@ export function CommitmentsCard({
   const [manualCadence, setManualCadence] = useState<Cadence>("monthly");
   const [manualAnchorDay, setManualAnchorDay] = useState(1);
   const [manualSource, setManualSource] = useState<"card" | "cash">("card");
+  const [manualScope, setManualScope] = useState<"personal" | "family">("personal");
   const mounted = useRef(true);
 
   useEffect(() => {
@@ -145,12 +147,14 @@ export function CommitmentsCard({
           anchorDay: manualAnchorDay,
           matcher: null,
           source: manualSource,
+          scope: manualScope,
         }),
       });
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       setManualName("");
       setManualAmount("");
       setManualSource("card");
+      setManualScope("personal");
       setAdding(false);
       await load();
       onChanged();
@@ -234,34 +238,66 @@ export function CommitmentsCard({
               className="h-9 text-sm"
             />
 
-            {/* Вибір джерела: Картка чи Готівка */}
-            <div className="space-y-1">
-              <div className="text-[11px] text-muted-foreground font-medium">Спосіб оплати:</div>
-              <div className="flex rounded-xl bg-background p-1 border border-border/60">
-                <button
-                  type="button"
-                  onClick={() => setManualSource("card")}
-                  className={cn(
-                    "flex-1 py-1.5 text-xs rounded-lg transition-all flex items-center justify-center gap-1.5",
-                    manualSource === "card"
-                      ? "bg-primary text-primary-foreground font-semibold shadow-xs"
-                      : "text-muted-foreground hover:text-foreground"
-                  )}
-                >
-                  <CreditCard className="size-3.5" /> Картка
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setManualSource("cash")}
-                  className={cn(
-                    "flex-1 py-1.5 text-xs rounded-lg transition-all flex items-center justify-center gap-1.5",
-                    manualSource === "cash"
-                      ? "bg-primary text-primary-foreground font-semibold shadow-xs"
-                      : "text-muted-foreground hover:text-foreground"
-                  )}
-                >
-                  <Banknote className="size-3.5" /> Готівка
-                </button>
+            {/* Вибір джерела та простору */}
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+              <div className="space-y-1">
+                <div className="text-[11px] text-muted-foreground font-medium">Спосіб оплати:</div>
+                <div className="flex rounded-xl bg-background p-1 border border-border/60">
+                  <button
+                    type="button"
+                    onClick={() => setManualSource("card")}
+                    className={cn(
+                      "flex-1 py-1.5 text-xs rounded-lg transition-all flex items-center justify-center gap-1.5",
+                      manualSource === "card"
+                        ? "bg-primary text-primary-foreground font-semibold shadow-xs"
+                        : "text-muted-foreground hover:text-foreground"
+                    )}
+                  >
+                    <CreditCard className="size-3.5" /> Картка
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setManualSource("cash")}
+                    className={cn(
+                      "flex-1 py-1.5 text-xs rounded-lg transition-all flex items-center justify-center gap-1.5",
+                      manualSource === "cash"
+                        ? "bg-primary text-primary-foreground font-semibold shadow-xs"
+                        : "text-muted-foreground hover:text-foreground"
+                    )}
+                  >
+                    <Banknote className="size-3.5" /> Готівка
+                  </button>
+                </div>
+              </div>
+
+              <div className="space-y-1">
+                <div className="text-[11px] text-muted-foreground font-medium">Простір бюджету:</div>
+                <div className="flex rounded-xl bg-background p-1 border border-border/60">
+                  <button
+                    type="button"
+                    onClick={() => setManualScope("personal")}
+                    className={cn(
+                      "flex-1 py-1.5 text-xs rounded-lg transition-all flex items-center justify-center gap-1.5",
+                      manualScope === "personal"
+                        ? "bg-primary text-primary-foreground font-semibold shadow-xs"
+                        : "text-muted-foreground hover:text-foreground"
+                    )}
+                  >
+                    👤 Особистий
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setManualScope("family")}
+                    className={cn(
+                      "flex-1 py-1.5 text-xs rounded-lg transition-all flex items-center justify-center gap-1.5",
+                      manualScope === "family"
+                        ? "bg-primary text-primary-foreground font-semibold shadow-xs"
+                        : "text-muted-foreground hover:text-foreground"
+                    )}
+                  >
+                    👥 Сім'я
+                  </button>
+                </div>
               </div>
             </div>
 
@@ -382,6 +418,11 @@ export function CommitmentsCard({
                           </>
                         )}
                       </button>
+                      {c.scope === "family" && (
+                        <span className="inline-flex items-center gap-1 rounded-md px-1.5 py-0.5 text-[10px] font-medium border border-purple-500/30 bg-purple-500/10 text-purple-600 dark:text-purple-400 shrink-0">
+                          👥 Сім'я
+                        </span>
+                      )}
                     </div>
                     <div className="text-xs text-muted-foreground">{when(c.cadence, c.anchor_day)}</div>
                   </div>

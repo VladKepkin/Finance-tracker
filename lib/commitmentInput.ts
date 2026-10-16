@@ -8,6 +8,7 @@ export interface CreateInput {
   anchorDay: number;
   matcher: string | null;
   source?: "card" | "cash";
+  scope?: "personal" | "family";
 }
 
 export interface PatchInput {
@@ -16,6 +17,7 @@ export interface PatchInput {
   cadence?: Cadence;
   anchorDay?: number;
   source?: "card" | "cash";
+  scope?: "personal" | "family";
 }
 
 export type ParseResult<T> = { ok: true; value: T } | { ok: false; error: string };
@@ -58,6 +60,7 @@ export function parseCreate(body: unknown): ParseResult<CreateInput> {
   }
 
   const source = body.source === "cash" ? "cash" : "card";
+  const scope: "personal" | "family" = body.scope === "family" ? "family" : "personal";
 
   return {
     ok: true,
@@ -69,6 +72,7 @@ export function parseCreate(body: unknown): ParseResult<CreateInput> {
       anchorDay: body.anchorDay,
       matcher: typeof body.matcher === "string" ? body.matcher : null,
       source,
+      scope,
     },
   };
 }
@@ -112,6 +116,13 @@ export function parsePatch(body: unknown, storedCadence: Cadence): ParseResult<P
       return { ok: false, error: "Некоректне джерело платежу" };
     }
     patch.source = body.source;
+  }
+
+  if (body.scope !== undefined) {
+    if (body.scope !== "personal" && body.scope !== "family") {
+      return { ok: false, error: "Некоректний простір платежу" };
+    }
+    patch.scope = body.scope;
   }
 
   return { ok: true, value: patch };

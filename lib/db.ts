@@ -100,7 +100,8 @@ export function createSchema(database: DB): void {
       matcher    TEXT,
       active     INTEGER NOT NULL DEFAULT 1,
       created_at INTEGER NOT NULL,
-      source     TEXT NOT NULL DEFAULT 'card'
+      source     TEXT NOT NULL DEFAULT 'card',
+      scope      TEXT NOT NULL DEFAULT 'personal'
     );
     CREATE INDEX IF NOT EXISTS idx_commit_user ON commitments(user_id, active);
     CREATE TABLE IF NOT EXISTS ratings (
@@ -155,6 +156,9 @@ export function createSchema(database: DB): void {
 
   try {
     database.exec("ALTER TABLE commitments ADD COLUMN source TEXT NOT NULL DEFAULT 'card'");
+  } catch {}
+  try {
+    database.exec("ALTER TABLE commitments ADD COLUMN scope TEXT NOT NULL DEFAULT 'personal'");
   } catch {}
 }
 

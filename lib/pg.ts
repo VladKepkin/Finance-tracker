@@ -165,7 +165,8 @@ export async function createPgSchema(pool: Pool = getPgPool()): Promise<void> {
       matcher    TEXT,
       active     INTEGER NOT NULL DEFAULT 1,
       created_at BIGINT NOT NULL,
-      source     TEXT NOT NULL DEFAULT 'card'
+      source     TEXT NOT NULL DEFAULT 'card',
+      scope      TEXT NOT NULL DEFAULT 'personal'
     );
 
     CREATE INDEX IF NOT EXISTS idx_commit_user ON commitments(user_id, active);
@@ -223,5 +224,8 @@ export async function createPgSchema(pool: Pool = getPgPool()): Promise<void> {
       created_by INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
       expires_at BIGINT NOT NULL
     );
+
+    ALTER TABLE commitments ADD COLUMN IF NOT EXISTS source TEXT NOT NULL DEFAULT 'card';
+    ALTER TABLE commitments ADD COLUMN IF NOT EXISTS scope TEXT NOT NULL DEFAULT 'personal';
   `);
 }
