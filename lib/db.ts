@@ -152,6 +152,15 @@ export function createSchema(database: DB): void {
       created_by INTEGER NOT NULL,
       expires_at INTEGER NOT NULL
     );
+
+    CREATE TABLE IF NOT EXISTS user_activity_days (
+      user_id       INTEGER NOT NULL,
+      day_date      TEXT NOT NULL,
+      request_count INTEGER NOT NULL DEFAULT 1,
+      last_seen_at  INTEGER NOT NULL,
+      PRIMARY KEY (user_id, day_date)
+    );
+    CREATE INDEX IF NOT EXISTS idx_user_activity_day ON user_activity_days(day_date);
   `);
 
   try {

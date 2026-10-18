@@ -154,6 +154,13 @@ async function main() {
     // 12. salaries
     await migrateTable("salaries", ["id", "user_id", "paid_on", "amount", "currency", "note", "created_at"], client);
 
+    // 13. user_activity_days
+    await migrateTable(
+      "user_activity_days",
+      ["user_id", "day_date", "request_count", "last_seen_at"],
+      client
+    );
+
     console.log("🔄 Resetting primary key sequences...");
     await client.query("SELECT setval('users_id_seq', COALESCE((SELECT MAX(id) FROM users), 1));");
     await client.query("SELECT setval('groups_id_seq', COALESCE((SELECT MAX(id) FROM groups), 1));");

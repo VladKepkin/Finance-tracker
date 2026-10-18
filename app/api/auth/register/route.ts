@@ -1,5 +1,10 @@
 import { NextResponse } from "next/server";
-import { adapterGetUserByUsername, adapterCreateUser, adapterAcceptInvite } from "@/lib/data-adapter";
+import {
+  adapterGetUserByUsername,
+  adapterCreateUser,
+  adapterAcceptInvite,
+  adapterRecordUserActivity,
+} from "@/lib/data-adapter";
 import { setSessionCookie } from "@/lib/session";
 
 export const runtime = "nodejs";
@@ -30,6 +35,7 @@ export async function POST(req: Request) {
   }
 
   const user = await adapterCreateUser(username, password);
+  adapterRecordUserActivity(user.id).catch(() => {});
 
   let groupJoined: { groupId: number; groupName: string } | null = null;
   if (inviteCode) {
