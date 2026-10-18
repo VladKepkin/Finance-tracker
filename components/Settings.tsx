@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import {
   CreditCard,
   LogOut,
@@ -10,6 +10,7 @@ import {
   ShieldAlert,
   AlertTriangle,
   ExternalLink,
+  BarChart3,
 } from "lucide-react";
 import type { MonoClientInfo } from "@/lib/monobank";
 import { currencyMeta } from "@/lib/monobank";
@@ -110,6 +111,16 @@ export function Settings({
   const [confirmLogout, setConfirmLogout] = useState(false);
   const [showAllJars, setShowAllJars] = useState(false);
   const [monoTokenInput, setMonoTokenInput] = useState("");
+  const [isAdmin, setIsAdmin] = useState(false);
+
+  useEffect(() => {
+    fetch("/api/auth/me")
+      .then((res) => (res.ok ? res.json() : null))
+      .then((data) => {
+        if (data?.isAdmin) setIsAdmin(true);
+      })
+      .catch(() => {});
+  }, []);
 
   const jars = client?.jars ?? [];
   const visibleJars = showAllJars ? jars : jars.slice(0, 3);
@@ -486,6 +497,16 @@ export function Settings({
                 </div>
               </div>
             ) : null}
+
+            {/* Дашборд продуктової та системної аналітики (Адмін) */}
+            {isAdmin && (
+              <a
+                href="/admin"
+                className="flex items-center justify-center gap-2 w-full text-xs h-9 rounded-xl border border-violet-500/30 bg-violet-500/10 hover:bg-violet-500/20 text-violet-700 dark:text-violet-300 font-semibold transition-colors shadow-xs"
+              >
+                <BarChart3 className="size-4" /> Дашборд аналітики (Адмін)
+              </a>
+            )}
 
             {/* Вийти з акаунта */}
             {confirmLogout ? (

@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { getSession } from "@/lib/session";
 import { isAllowedKey } from "@/lib/db";
-import { adapterGetAllKV, adapterSetKV } from "@/lib/data-adapter";
+import { adapterGetAllKV, adapterSetKV, adapterRecordUserActivity } from "@/lib/data-adapter";
 import { applyAtomicDataPatch, type AtomicPatchPayload } from "@/lib/atomicPatch";
 import { withTelemetry } from "@/lib/telemetry";
 
@@ -11,6 +11,7 @@ export const dynamic = "force-dynamic";
 export const GET = withTelemetry("/api/data", async function GET() {
   const session = await getSession();
   if (!session) return NextResponse.json({ error: "Не авторизовано" }, { status: 401 });
+  adapterRecordUserActivity(session.userId).catch(() => {});
   const data = await adapterGetAllKV(session.userId);
   return NextResponse.json(data);
 });
@@ -18,6 +19,7 @@ export const GET = withTelemetry("/api/data", async function GET() {
 export const PUT = withTelemetry("/api/data", async function PUT(req: Request) {
   const session = await getSession();
   if (!session) return NextResponse.json({ error: "Не авторизовано" }, { status: 401 });
+  adapterRecordUserActivity(session.userId).catch(() => {});
 
   let body: { key?: string; value?: unknown };
   try {
@@ -38,6 +40,7 @@ export const PUT = withTelemetry("/api/data", async function PUT(req: Request) {
 export const PATCH = withTelemetry("/api/data", async function PATCH(req: Request) {
   const session = await getSession();
   if (!session) return NextResponse.json({ error: "Не авторизовано" }, { status: 401 });
+  adapterRecordUserActivity(session.userId).catch(() => {});
 
   let body: unknown;
   try {

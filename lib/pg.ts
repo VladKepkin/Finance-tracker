@@ -225,6 +225,15 @@ export async function createPgSchema(pool: Pool = getPgPool()): Promise<void> {
       expires_at BIGINT NOT NULL
     );
 
+    CREATE TABLE IF NOT EXISTS user_activity_days (
+      user_id       INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+      day_date      TEXT NOT NULL,
+      request_count INTEGER NOT NULL DEFAULT 1,
+      last_seen_at  BIGINT NOT NULL,
+      PRIMARY KEY (user_id, day_date)
+    );
+    CREATE INDEX IF NOT EXISTS idx_user_activity_day ON user_activity_days(day_date);
+
     ALTER TABLE commitments ADD COLUMN IF NOT EXISTS source TEXT NOT NULL DEFAULT 'card';
     ALTER TABLE commitments ADD COLUMN IF NOT EXISTS scope TEXT NOT NULL DEFAULT 'personal';
   `);
