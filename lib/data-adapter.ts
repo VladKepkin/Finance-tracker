@@ -8,6 +8,11 @@ import * as ratRepo from "./repo/ratings";
 import * as fxRepo from "./repo/fxRates";
 import * as syncRepo from "./repo/syncState";
 import * as grpRepo from "./repo/groups";
+import {
+  recordUserActivity,
+  buildAdminAnalyticsPayload,
+  type AdminAnalyticsPayload,
+} from "./adminAnalytics";
 import type { TxRow } from "./repo/transactions";
 import type { UserRow } from "./db";
 import type { CommitmentRow } from "./repo/commitments";
@@ -523,3 +528,20 @@ export async function adapterAcceptInvite(
   }
   return grpRepo.acceptInvite(db(), code, userId);
 }
+
+// --- Admin Analytics & Activity ---
+
+export async function adapterRecordUserActivity(userId: number, nowMs?: number): Promise<void> {
+  if (isPostgresConfigured()) {
+    return pgRepo.recordUserActivityPg(userId, nowMs);
+  }
+  recordUserActivity(db(), userId, nowMs);
+}
+
+export async function adapterGetAdminAnalytics(nowMs?: number): Promise<AdminAnalyticsPayload> {
+  if (isPostgresConfigured()) {
+    return pgRepo.getAdminAnalyticsPg(nowMs);
+  }
+  return buildAdminAnalyticsPayload(db(), nowMs);
+}
+

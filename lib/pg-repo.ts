@@ -8,6 +8,13 @@ import type { SalaryRow } from "./repo/salaries";
 import type { CurrencyRate } from "./fx";
 import type { SyncStateRow, SyncStatus } from "./repo/syncState";
 import { randomBytes } from "crypto";
+import {
+  computeAdminAnalytics,
+  toDayDate,
+  type AdminAnalyticsPayload,
+  type AnalyticsRawData,
+} from "./adminAnalytics";
+import { getTelemetrySnapshot } from "./telemetry";
 
 // --- Users & Auth ---
 
@@ -859,3 +866,82 @@ export async function findUserByAccountIdPg(accountId: string): Promise<number |
 
   return null;
 }
+
+// --- Admin Analytics & Activity ---
+
+export async function recordUserActivityPg(userId: number, nowMs?: number): Promise<void> {
+  const now = nowMs ?? Date.now();
+  const dayDate = toDayDate(now);
+  await queryPg(
+    `INSERT INTO user_activity_days (user_id, day_date, request_count, last_seen_at)
+     VALUES ($1, $2, 1, $3)
+     ON CONFLICT (user_id, day_date) DO UPDATE SET
+       request_count = user_activity_days.request_count + 1,
+       last_seen_at = EXCLUDED.last_seen_at`,
+    [userId, dayDate, now]
+  );
+}
+
+export async function getAdminAnalyticsPg(nowMs?: number): Promise<AdminAnalyticsPayload> {
+  const [
+    usersRes,
+    activityDaysRes,
+    ratingsRes,
+    commitmentsRes,
+    salariesRes,
+    kvRes,
+    groupsCountRes,
+    groupMembersRes,
+    activeCommitmentsRes,
+    ratingsCountRes,
+    salariesUserIdsRes,
+    syncStatesRes,
+  ] = await Promise.all([
+    queryPg<{ id: number; created_at: number; mono_token: string | null }>(
+      "SELECT id, created_at, mono_token FROM users"
+    ),
+    queryPg<{ user_id: number; day_date: string }>(
+      "SELECT user_id, day_date FROM user_activity_days"
+    ),
+    queryPg<{ user_id: number; created_at: number }>(
+      "SELECT user_id, created_at FROM ratings"
+    ),
+    queryPg<{ user_id: number; created_at: number }>(
+      "SELECT user_id, created_at FROM commitments"
+    ),
+    queryPg<{ user_id: number; created_at: number }>(
+      "SELECT user_id, created_at FROM salaries"
+    ),
+    queryPg<{ user_id: number; key: string; value: string }>(
+      "SELECT user_id, key, value FROM kv WHERE key IN ('cashAccounts', 'manualMode', 'wishlist', 'savingsPlan', 'budgets')"
+    ),
+    queryPg<{ count: number }>("SELECT COUNT(*)::int as count FROM groups"),
+    queryPg<{ user_id: number }>("SELECT DISTINCT user_id FROM group_members"),
+    queryPg<{ user_id: number; id: number }>(
+      "SELECT user_id, id FROM commitments WHERE active = 1"
+    ),
+    queryPg<{ count: number }>("SELECT COUNT(*)::int as count FROM ratings"),
+    queryPg<{ user_id: number }>("SELECT DISTINCT user_id FROM salaries"),
+    queryPg<{ status: string; error: string | null; backfill_done: number }>(
+      "SELECT status, error, backfill_done FROM sync_state"
+    ),
+  ]);
+
+  const rawData: AnalyticsRawData = {
+    users: usersRes.rows,
+    activityDays: activityDaysRes.rows,
+    ratingsCreatedAt: ratingsRes.rows,
+    commitmentsCreatedAt: commitmentsRes.rows,
+    salariesCreatedAt: salariesRes.rows,
+    kvItems: kvRes.rows,
+    groupsCount: groupsCountRes.rows[0]?.count ?? 0,
+    groupMembersUserIds: groupMembersRes.rows.map((r) => r.user_id),
+    activeCommitments: activeCommitmentsRes.rows,
+    ratingsCount: ratingsCountRes.rows[0]?.count ?? 0,
+    salariesUserIds: salariesUserIdsRes.rows.map((r) => r.user_id),
+    syncStates: syncStatesRes.rows,
+  };
+
+  return computeAdminAnalytics(rawData, getTelemetrySnapshot(), nowMs);
+}
+

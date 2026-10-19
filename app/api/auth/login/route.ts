@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { verifyPassword } from "@/lib/db";
-import { adapterGetUserByUsername } from "@/lib/data-adapter";
+import { adapterGetUserByUsername, adapterRecordUserActivity } from "@/lib/data-adapter";
 import { setSessionCookie } from "@/lib/session";
 import { withTelemetry } from "@/lib/telemetry";
 
@@ -26,6 +26,7 @@ export const POST = withTelemetry("/api/auth/login", async function POST(req: Re
     return NextResponse.json({ error: "Невірний логін або пароль" }, { status: 401 });
   }
 
+  adapterRecordUserActivity(user.id).catch(() => {});
   await setSessionCookie({ userId: user.id, username: user.username });
   return NextResponse.json({ username: user.username });
 });
