@@ -91,12 +91,27 @@ export function shareAccount(
   if (!isUserInGroup(database, groupId, ownerUserId)) {
     throw new Error("Користувач не є учасником цієї групи");
   }
+
+  const conflictSync = database
+    .prepare("SELECT 1 FROM sync_state WHERE account_id = ? AND user_id != ? LIMIT 1")
+    .get(accountId, ownerUserId);
+  const conflictTx = database
+    .prepare("SELECT 1 FROM transactions WHERE account_id = ? AND user_id != ? LIMIT 1")
+    .get(accountId, ownerUserId);
+  const conflictShared = database
+    .prepare("SELECT 1 FROM shared_accounts WHERE account_id = ? AND owner_user_id != ? LIMIT 1")
+    .get(accountId, ownerUserId);
+
+  if (conflictSync || conflictTx || conflictShared) {
+    throw new Error("Цей рахунок належить іншому користувачу");
+  }
+
   const now = Date.now();
   database
     .prepare(
       `INSERT INTO shared_accounts (account_id, owner_user_id, group_id, created_at)
        VALUES (?, ?, ?, ?)
-       ON CONFLICT(account_id, group_id) DO UPDATE SET owner_user_id = excluded.owner_user_id`
+       ON CONFLICT(account_id, group_id) DO NOTHING`
     )
     .run(accountId, ownerUserId, groupId, now);
 }

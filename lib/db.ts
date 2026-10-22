@@ -1,5 +1,5 @@
 import Database from "better-sqlite3";
-import { scryptSync, randomBytes, timingSafeEqual } from "crypto";
+import { scrypt, scryptSync, randomBytes, timingSafeEqual } from "crypto";
 import { mkdirSync } from "fs";
 import { dirname } from "path";
 import { recordDbQuery } from "./telemetry";
@@ -28,6 +28,24 @@ export function verifyPassword(password: string, stored: string): boolean {
   const expected = Buffer.from(hashHex, "hex");
   const actual = scryptSync(password, salt, 64);
   return actual.length === expected.length && timingSafeEqual(actual, expected);
+}
+
+export function verifyPasswordAsync(password: string, stored: string): Promise<boolean> {
+  return new Promise((resolve) => {
+    const [saltHex, hashHex] = stored.split(":");
+    if (!saltHex || !hashHex) return resolve(false);
+    const salt = Buffer.from(saltHex, "hex");
+    const expected = Buffer.from(hashHex, "hex");
+    scrypt(password, salt, 64, (err, actual) => {
+      if (err || !actual) return resolve(false);
+      try {
+        const match = actual.length === expected.length && timingSafeEqual(actual, expected);
+        resolve(match);
+      } catch {
+        resolve(false);
+      }
+    });
+  });
 }
 
 type Global = typeof globalThis & { __moneyDb?: DB };

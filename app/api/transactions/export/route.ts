@@ -27,10 +27,11 @@ function formatCsvDate(unixSeconds: number): string {
 }
 
 function escapeCsvField(val: string): string {
-  if (val.includes(",") || val.includes('"') || val.includes("\n") || val.includes("\r") || val.includes(";")) {
-    return `"${val.replace(/"/g, '""')}"`;
+  const safe = /^[=+\-@\t\r]/.test(val) ? `'${val}` : val;
+  if (safe.includes(",") || safe.includes('"') || safe.includes("\n") || safe.includes("\r") || safe.includes(";")) {
+    return `"${safe.replace(/"/g, '""')}"`;
   }
-  return val;
+  return safe;
 }
 
 const CURRENCY_MAP: Record<number, string> = {

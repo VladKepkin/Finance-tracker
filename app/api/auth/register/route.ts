@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { checkRateLimit, getClientIp } from "@/lib/rateLimit";
 import {
   adapterGetUserByUsername,
   adapterCreateUser,
@@ -11,6 +12,14 @@ export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
 export async function POST(req: Request) {
+  const rl = checkRateLimit(`register:${getClientIp(req)}`, 5, 60_000);
+  if (!rl.allowed) {
+    return NextResponse.json(
+      { error: "Забагато спроб реєстрації. Спробуйте пізніше." },
+      { status: 429 }
+    );
+  }
+
   let body: { username?: string; password?: string; inviteCode?: string };
   try {
     body = await req.json();
@@ -22,11 +31,26 @@ export async function POST(req: Request) {
   const password = body.password ?? "";
   const inviteCode = body.inviteCode?.trim();
 
+  if (process.env.ALLOW_REGISTRATION === "false" && !inviteCode) {
+    return NextResponse.json(
+      { error: "Відкриту реєстрацію вимкнено адміністратором (потрібен код запрошення)" },
+      { status: 403 }
+    );
+  }
+
   if (!username || username.length < 3) {
     return NextResponse.json({ error: "Логін повинен містити хоча б 3 символи" }, { status: 400 });
   }
   if (!password || password.length < 6) {
     return NextResponse.json({ error: "Пароль повинен містити хоча б 6 символів" }, { status: 400 });
+  }
+
+  const reservedAdmin = (process.env.APP_USERNAME || "admin").toLowerCase();
+  if (process.env.APP_PASSWORD && username.toLowerCase() === reservedAdmin) {
+    return NextResponse.json(
+      { error: "Цей логін зарезервовано адміністратором" },
+      { status: 403 }
+    );
   }
 
   const existing = await adapterGetUserByUsername(username);
