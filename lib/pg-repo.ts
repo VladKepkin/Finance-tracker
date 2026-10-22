@@ -123,7 +123,8 @@ export async function upsertManyTransactionsPg(
           description      = excluded.description,
           comment          = excluded.comment,
           counter_name     = excluded.counter_name,
-          fetched_at       = excluded.fetched_at`,
+          fetched_at       = excluded.fetched_at
+        WHERE transactions.user_id = EXCLUDED.user_id`,
         [
           it.id,
           userId,
@@ -742,11 +743,29 @@ export async function shareAccountPg(
 ): Promise<void> {
   const inGroup = await isUserInGroupPg(groupId, ownerUserId);
   if (!inGroup) throw new Error("Користувач не є учасником цієї групи");
+
+  const conflictSync = await queryPg(
+    "SELECT 1 FROM sync_state WHERE account_id = $1 AND user_id != $2 LIMIT 1",
+    [accountId, ownerUserId]
+  );
+  const conflictTx = await queryPg(
+    "SELECT 1 FROM transactions WHERE account_id = $1 AND user_id != $2 LIMIT 1",
+    [accountId, ownerUserId]
+  );
+  const conflictShared = await queryPg(
+    "SELECT 1 FROM shared_accounts WHERE account_id = $1 AND owner_user_id != $2 LIMIT 1",
+    [accountId, ownerUserId]
+  );
+
+  if (conflictSync.rows.length > 0 || conflictTx.rows.length > 0 || conflictShared.rows.length > 0) {
+    throw new Error("Цей рахунок належить іншому користувачу");
+  }
+
   const now = Date.now();
   await queryPg(
     `INSERT INTO shared_accounts (account_id, owner_user_id, group_id, created_at)
      VALUES ($1, $2, $3, $4)
-     ON CONFLICT(account_id, group_id) DO UPDATE SET owner_user_id = excluded.owner_user_id`,
+     ON CONFLICT(account_id, group_id) DO NOTHING`,
     [accountId, ownerUserId, groupId, now]
   );
 }

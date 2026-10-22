@@ -36,7 +36,7 @@ export async function GET() {
           groupName: s.groupName,
         });
       } else {
-        const latestTx = await adapterGetLatestTxForAccount(s.accountId);
+        const latestTx = await adapterGetLatestTxForAccount(s.accountId, s.ownerUserId);
         accounts.push({
           id: s.accountId,
           sendId: "",
@@ -86,7 +86,7 @@ export async function GET() {
           groupName: s.groupName,
         });
       } else {
-        const latestTx = await adapterGetLatestTxForAccount(s.accountId);
+        const latestTx = await adapterGetLatestTxForAccount(s.accountId, s.ownerUserId);
         mergedAccounts.push({
           id: s.accountId,
           sendId: "",

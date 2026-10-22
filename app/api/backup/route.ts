@@ -72,6 +72,11 @@ export const POST = withTelemetry("/api/backup", async function POST(req: Reques
   const session = await getSession();
   if (!session) return NextResponse.json({ error: "Не авторизовано" }, { status: 401 });
 
+  const rawText = await req.text();
+  if (rawText.length > 5 * 1024 * 1024) {
+    return NextResponse.json({ error: "Занадто великий розмір файлу резервної копії" }, { status: 413 });
+  }
+
   let body: {
     mode?: "merge" | "replace";
     data?: {
@@ -99,7 +104,7 @@ export const POST = withTelemetry("/api/backup", async function POST(req: Reques
   };
 
   try {
-    body = await req.json();
+    body = JSON.parse(rawText);
   } catch {
     return NextResponse.json({ error: "Некоректний JSON" }, { status: 400 });
   }
