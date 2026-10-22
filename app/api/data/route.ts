@@ -21,9 +21,14 @@ export const PUT = withTelemetry("/api/data", async function PUT(req: Request) {
   if (!session) return NextResponse.json({ error: "Не авторизовано" }, { status: 401 });
   adapterRecordUserActivity(session.userId).catch(() => {});
 
+  const rawText = await req.text();
+  if (rawText.length > 2 * 1024 * 1024) {
+    return NextResponse.json({ error: "Занадто великий розмір запиту" }, { status: 413 });
+  }
+
   let body: { key?: string; value?: unknown };
   try {
-    body = await req.json();
+    body = JSON.parse(rawText);
   } catch {
     return NextResponse.json({ error: "Некоректний запит" }, { status: 400 });
   }
@@ -42,9 +47,14 @@ export const PATCH = withTelemetry("/api/data", async function PATCH(req: Reques
   if (!session) return NextResponse.json({ error: "Не авторизовано" }, { status: 401 });
   adapterRecordUserActivity(session.userId).catch(() => {});
 
+  const rawText = await req.text();
+  if (rawText.length > 2 * 1024 * 1024) {
+    return NextResponse.json({ error: "Занадто великий розмір запиту" }, { status: 413 });
+  }
+
   let body: unknown;
   try {
-    body = await req.json();
+    body = JSON.parse(rawText);
   } catch {
     return NextResponse.json({ error: "Некоректний JSON" }, { status: 400 });
   }

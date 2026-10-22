@@ -10,7 +10,9 @@ import type { SessionData } from "./session";
  */
 export function isAdminSession(session: SessionData | null | undefined): boolean {
   if (!session) return false;
-  if (session.userId === 1) return true;
+
+  const sessionUser = session.username.toLowerCase();
+  const defaultAdmin = (process.env.APP_USERNAME || "admin").toLowerCase();
 
   const adminUsersEnv = process.env.ADMIN_USERS;
   if (adminUsersEnv) {
@@ -18,14 +20,19 @@ export function isAdminSession(session: SessionData | null | undefined): boolean
       .split(",")
       .map((u) => u.trim().toLowerCase())
       .filter(Boolean);
-    if (list.includes(session.username.toLowerCase())) {
+    if (list.includes(sessionUser)) {
       return true;
     }
   }
 
-  const appUsername = process.env.APP_USERNAME || "admin";
-  if (session.username.toLowerCase() === appUsername.toLowerCase()) {
+  if (sessionUser === defaultAdmin) {
     return true;
+  }
+
+  if (session.userId === 1) {
+    if (!process.env.APP_USERNAME || sessionUser === defaultAdmin) {
+      return true;
+    }
   }
 
   return false;

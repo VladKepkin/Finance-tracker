@@ -40,6 +40,7 @@ const UPSERT = `
     comment          = excluded.comment,
     counter_name     = excluded.counter_name,
     fetched_at       = excluded.fetched_at
+    WHERE transactions.user_id = excluded.user_id
 `;
 
 export function upsertMany(

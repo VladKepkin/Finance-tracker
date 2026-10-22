@@ -1,10 +1,11 @@
 import { describe, it, expect } from "vitest";
 
 function escapeCsvField(val: string): string {
-  if (val.includes(",") || val.includes('"') || val.includes("\n") || val.includes("\r") || val.includes(";")) {
-    return `"${val.replace(/"/g, '""')}"`;
+  const safe = /^[=+\-@\t\r]/.test(val) ? `'${val}` : val;
+  if (safe.includes(",") || safe.includes('"') || safe.includes("\n") || safe.includes("\r") || safe.includes(";")) {
+    return `"${safe.replace(/"/g, '""')}"`;
   }
-  return val;
+  return safe;
 }
 
 function formatCsvDate(unixSeconds: number): string {
@@ -24,6 +25,13 @@ describe("statementExport CSV formatting", () => {
     expect(escapeCsvField("Silpo, Kyiv")).toBe('"Silpo, Kyiv"');
     expect(escapeCsvField('McDonald"s')).toBe('"McDonald""s"');
     expect(escapeCsvField("Regular Description")).toBe("Regular Description");
+  });
+
+  it("escapes formula injection characters to prevent CSV injection", () => {
+    expect(escapeCsvField('=HYPERLINK("http://evil.com")')).toBe(`"'=HYPERLINK(""http://evil.com"")"`);
+    expect(escapeCsvField("+SUM(A1:A2)")).toBe("'+SUM(A1:A2)");
+    expect(escapeCsvField("-50 UAH")).toBe("'-50 UAH");
+    expect(escapeCsvField("@evil")).toBe("'@evil");
   });
 
   it("formats dates into DD.MM.YYYY HH:mm:ss format", () => {

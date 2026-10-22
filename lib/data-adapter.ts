@@ -147,14 +147,27 @@ export async function adapterTimeBoundsTransactions(
 }
 
 export async function adapterGetLatestTxForAccount(
-  accountId: string
+  accountId: string,
+  ownerUserId?: number
 ): Promise<{ balance: number; currency_code: number } | undefined> {
   if (isPostgresConfigured()) {
+    if (ownerUserId !== undefined) {
+      const res = await (await import("./pg")).queryPg<{ balance: number; currency_code: number }>(
+        "SELECT balance, currency_code FROM transactions WHERE account_id = $1 AND user_id = $2 ORDER BY time DESC LIMIT 1",
+        [accountId, ownerUserId]
+      );
+      return res.rows[0];
+    }
     const res = await (await import("./pg")).queryPg<{ balance: number; currency_code: number }>(
       "SELECT balance, currency_code FROM transactions WHERE account_id = $1 ORDER BY time DESC LIMIT 1",
       [accountId]
     );
     return res.rows[0];
+  }
+  if (ownerUserId !== undefined) {
+    return db()
+      .prepare("SELECT balance, currency_code FROM transactions WHERE account_id = ? AND user_id = ? ORDER BY time DESC LIMIT 1")
+      .get(accountId, ownerUserId) as { balance: number; currency_code: number } | undefined;
   }
   return db()
     .prepare("SELECT balance, currency_code FROM transactions WHERE account_id = ? ORDER BY time DESC LIMIT 1")

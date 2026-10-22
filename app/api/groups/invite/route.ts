@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { getSession } from "@/lib/session";
+import { checkRateLimit, getClientIp } from "@/lib/rateLimit";
 import { adapterCreateInvite, adapterAcceptInvite } from "@/lib/data-adapter";
 
 export const runtime = "nodejs";
@@ -25,6 +26,11 @@ export async function POST(req: Request) {
 export async function PUT(req: Request) {
   const session = await getSession();
   if (!session) return NextResponse.json({ error: "Не авторизовано" }, { status: 401 });
+
+  const rl = checkRateLimit(`invite:${getClientIp(req)}:${session.userId}`, 10, 60_000);
+  if (!rl.allowed) {
+    return NextResponse.json({ error: "Забагато спроб. Спробуйте пізніше." }, { status: 429 });
+  }
 
   try {
     const body = (await req.json()) as { code?: string };
